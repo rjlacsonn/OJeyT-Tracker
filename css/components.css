@@ -1,0 +1,40 @@
+a {
+  color: inherit;
+}
+
+button,
+input {
+  transition:
+    border-color 0.2s var(--ease),
+    background 0.2s var(--ease),
+    color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease),
+    transform 0.2s var(--ease);
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled,
+button.is-loading {
+  cursor: wait;
+  opacity: 0.68;
+  transform: none;
+}
+
+button:disabled:hover,
+button.is-loading:hover {
+  transform: none;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(21, 184, 166, 0.22);
+  outline-offset: 3px;
+}

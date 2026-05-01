@@ -1,0 +1,90 @@
+-- OJeyT Tracker Supabase schema
+-- Run this in Supabase Dashboard > SQL Editor.
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text not null default '',
+  email text not null default '',
+  required_hours integer not null default 200,
+  office_latitude double precision not null default 14.5995,
+  office_longitude double precision not null default 120.9842,
+  office_radius integer not null default 100,
+  auto_check_in boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ojt_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  start_time timestamptz not null default now(),
+  end_time timestamptz,
+  duration_seconds integer not null default 0,
+  check_in_latitude double precision,
+  check_in_longitude double precision,
+  check_out_latitude double precision,
+  check_out_longitude double precision,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ojt_sessions_user_start_idx
+  on public.ojt_sessions (user_id, start_time desc);
+
+alter table public.profiles enable row level security;
+alter table public.ojt_sessions enable row level security;
+
+drop policy if exists "Users can read own profile" on public.profiles;
+create policy "Users can read own profile"
+  on public.profiles for select
+  using (auth.uid() = id);
+
+drop policy if exists "Users can insert own profile" on public.profiles;
+create policy "Users can insert own profile"
+  on public.profiles for insert
+  with check (auth.uid() = id);
+
+drop policy if exists "Users can update own profile" on public.profiles;
+create policy "Users can update own profile"
+  on public.profiles for update
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
+
+drop policy if exists "Users can read own sessions" on public.ojt_sessions;
+create policy "Users can read own sessions"
+  on public.ojt_sessions for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert own sessions" on public.ojt_sessions;
+create policy "Users can insert own sessions"
+  on public.ojt_sessions for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update own sessions" on public.ojt_sessions;
+create policy "Users can update own sessions"
+  on public.ojt_sessions for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create or replace function public.create_profile_for_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, full_name, email)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', ''),
+    coalesce(new.email, '')
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists create_profile_after_signup on auth.users;
+create trigger create_profile_after_signup
+  after insert on auth.users
+  for each row execute function public.create_profile_for_new_user();

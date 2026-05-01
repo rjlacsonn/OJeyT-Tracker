@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="OJeyT Tracker - Track your OJT hours with ease" />
+  <title>OJeyT Tracker</title>
+  <link rel="icon" type="image/png" href="public/logo.png">
+  <link rel="stylesheet" href="css/reset.css" />
+  <link rel="stylesheet" href="css/variables.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+</head>
+<body>
+  <section id="page-login" class="page auth-page active" aria-label="Login">
+    <div class="auth-card">
+      <div class="brand-lockup">
+        <span class="brand-mark">O</span>
+        <span class="brand-name">OJeyT Tracker</span>
+      </div>
+      <div class="auth-heading">
+        <h1>Welcome back</h1>
+        <p>Sign in to continue tracking your OJT hours.</p>
+      </div>
+      <form id="login-form" class="auth-form">
+        <label class="field">
+          <span>Email</span>
+          <input id="login-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="login-password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+        </label>
+        <p id="login-error" class="form-error" role="alert" aria-live="polite"></p>
+        <button id="login-submit" class="primary-btn" type="submit">Sign In</button>
+      </form>
+      <p class="auth-switch">Don't have an account? <a href="#signup" id="show-signup">Sign Up</a></p>
+      <div class="auth-help">
+        <button class="secondary-btn" type="button" onclick="showAuthHelp()">Help</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="page-signup" class="page auth-page" aria-label="Create Account">
+    <div class="auth-card">
+      <div class="brand-lockup">
+        <span class="brand-mark">O</span>
+        <span class="brand-name">OJeyT Tracker</span>
+      </div>
+      <div class="auth-heading">
+        <h1>Create account</h1>
+        <p>Fill in your details to enter your tracker.</p>
+      </div>
+      <form id="signup-form" class="auth-form">
+        <label class="field">
+          <span>Full Name</span>
+          <input id="signup-name" type="text" autocomplete="name" placeholder="Your full name" required />
+        </label>
+        <label class="field">
+          <span>Email</span>
+          <input id="signup-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="signup-password" type="password" autocomplete="new-password" placeholder="At least 6 characters" required />
+        </label>
+        <label class="field">
+          <span>Confirm Password</span>
+          <input id="signup-confirm" type="password" autocomplete="new-password" placeholder="Re-enter password" required />
+        </label>
+        <label class="field">
+          <span>Required OJT Hours</span>
+          <input id="signup-required-hours" type="number" min="1" placeholder="e.g., 200" required />
+          <small class="hint-text">Enter the total number of OJT hours required by your school or institution.</small>
+        </label>
+        <p id="signup-error" class="form-error" role="alert" aria-live="polite"></p>
+        <button id="signup-submit" class="primary-btn" type="submit">Create Account</button>
+      </form>
+      <p class="auth-switch">Already have an account? <a href="#login" id="show-login">Sign In</a></p>
+      <div class="auth-help">
+        <button class="secondary-btn" type="button" onclick="showAuthHelp()">Help</button>
+      </div>
+    </div>
+  </section>
+
+  <header id="topbar-container" class="topbar" style="display:none;">
+    <div class="topbar-inner">
+      <button class="brand-button" type="button" onclick="navTo('dashboard')" aria-label="Go to dashboard">
+        <span class="brand-mark">O</span>
+        <span class="brand-name">OJeyT Tracker</span>
+      </button>
+      <nav class="top-nav" aria-label="Primary navigation">
+        <button class="nav-btn active" type="button" data-page="dashboard" onclick="navTo('dashboard')">
+          <span class="nav-icon">□</span><span>Dashboard</span>
+        </button>
+        <button class="nav-btn" type="button" data-page="history" onclick="navTo('history')">
+          <span class="nav-icon">↺</span><span>History</span>
+        </button>
+        <button class="nav-btn" type="button" data-page="settings" onclick="navTo('settings')">
+          <span class="nav-icon">⚙</span><span>Settings</span>
+        </button>
+      </nav>
+      <div class="account-cluster">
+        <span class="account-avatar">↗</span></span>
+        <span id="user-email-short" class="account-email"></span>
+        <button class="logout-btn" type="button" onclick="logout()" aria-label="Log Out" title="Log Out">Log Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content-container" class="app-shell" style="display:none;">
+    <section id="page-dashboard" class="page app-page" aria-label="Dashboard">
+      <div class="page-heading">
+        <h1 id="greeting-msg">Hello, User</h1>
+        <p>Ready to start your OJT session?</p>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="left-stack">
+          <article class="panel progress-panel">
+            <div class="panel-title">
+              <span class="teal-icon">▣</span>
+              <span>Progress Overview</span>
+            </div>
+            <div class="progress-ring" aria-label="OJT progress">
+              <svg viewBox="0 0 140 140" role="img">
+                <circle class="ring-track" cx="70" cy="70" r="58"></circle>
+                <circle id="progress-circle-fill" class="ring-fill" cx="70" cy="70" r="58"></circle>
+              </svg>
+              <div class="ring-center">
+                <strong id="progress-percent">0%</strong>
+                <span id="hours-rendered">0 / 200 hrs</span>
+              </div>
+            </div>
+            <div class="mini-stats">
+              <div>
+                <span>□</span>
+                <strong id="stat-total-days">0</strong>
+                <small>Days Worked</small>
+              </div>
+              <div>
+                <span>◷</span>
+                <strong id="stat-total-hours">0h</strong>
+                <small>Total Hours</small>
+              </div>
+              <div>
+                <span>⌛</span>
+                <strong id="hours-remaining">200h</strong>
+                <small>Remaining</small>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel timer-panel">
+            <span class="eyebrow">Current Session</span>
+            <div id="timer-display" class="timer-display">00:00:00</div>
+            <p id="status-badge" class="timer-state">Ready to start</p>
+            <button id="main-btn" class="round-action" type="button" onclick="toggleSession()" aria-label="Check in">
+              <span class="btn-icon">↪</span>
+            </button>
+            <span id="btn-label" class="action-label">Check In</span>
+            <div id="timer-controls" class="timer-controls" style="display:none;">
+              <button id="pause-resume-btn" class="secondary-btn" type="button" onclick="togglePause()">⏸ Pause</button>
+              <button id="reset-btn" class="secondary-btn" type="button" onclick="showResetConfirmation()">↻ Reset</button>
+            </div>
+            <div id="location-status" class="location-status" style="display:none;">
+              <span>⌖</span><span id="location-text">Outside office range</span>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel recent-panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="teal-icon">◷</span>
+              <span>Recent Sessions</span>
+            </div>
+            <button class="text-link" type="button" onclick="navTo('history')">View All</button>
+          </div>
+          <div id="recent-sessions" class="session-list compact-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="page-history" class="page app-page" aria-label="Session History">
+      <div class="page-heading">
+        <h1>Session History</h1>
+        <p>Review all your check-in and check-out records</p>
+      </div>
+      <div class="history-stat-grid">
+        <article class="panel stat-panel"><span>□</span><strong id="history-days">0</strong><small>Total Days</small></article>
+        <article class="panel stat-panel"><span>◷</span><strong id="history-hours">0h</strong><small>Total Hours</small></article>
+        <article class="panel stat-panel"><span>▥</span><strong id="history-average">0h</strong><small>Daily Avg</small></article>
+        <article class="panel stat-panel"><span>↯</span><strong id="history-active">0</strong><small>Active</small></article>
+      </div>
+      <article class="panel history-panel">
+        <div id="all-sessions" class="history-list"></div>
+      </article>
+    </section>
+
+    <section id="page-settings" class="page app-page settings-page" aria-label="Settings">
+      <div class="page-heading">
+        <h1>Settings</h1>
+        <p>Configure your profile and OJT requirements</p>
+      </div>
+      <article class="panel settings-panel">
+        <section class="settings-block">
+          <h2><span class="teal-icon">↗</span>Profile</h2>
+          <div class="settings-card">
+            <label class="field">
+              <span>Your Name</span>
+              <input id="settings-name-input" type="text" placeholder="Your name" />
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-block">
+          <h2><span class="teal-icon">◇</span>OJT Requirements</h2>
+          <div class="settings-card">
+            <label class="field inline-field">
+              <span>Required Hours <small>(target OJT hours)</small></span>
+              <span class="input-suffix">
+                <input id="required-hours" type="number" min="1" placeholder="200" />
+                <em>hours</em>
+              </span>
+            </label>
+            <p class="hint">ⓘ Your progress ring and remaining hours will update based on this target.</p>
+          </div>
+        </section>
+
+        <section class="settings-block">
+          <h2><span class="teal-icon">⌖</span>Auto Check-in</h2>
+          <div class="settings-card toggle-row">
+            <div>
+              <strong>Enable auto check-in</strong>
+              <span>Automatically check in when you enter the office area</span>
+            </div>
+            <label class="switch">
+              <input id="auto-checkin" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-block">
+          <h2><span class="teal-icon">⌖</span>Office Location</h2>
+          <div class="settings-card location-grid">
+            <label class="field"><span>Latitude</span><input id="office-lat" type="number" step="0.0001" placeholder="14.5995" /></label>
+            <label class="field"><span>Longitude</span><input id="office-lon" type="number" step="0.0001" placeholder="120.9842" /></label>
+            <label class="field"><span>Detection Radius</span><input id="office-radius" type="number" min="10" max="1000" step="10" placeholder="100" /></label>
+          </div>
+        </section>
+
+        <button id="save-settings-btn" class="primary-btn save-btn" type="button" onclick="saveSettings()">▣ Save Changes</button>
+      </article>
+    </section>
+  </main>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Reset Confirmation Modal -->
+  <div id="reset-confirmation-modal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeResetConfirmation()"></div>
+    <div class="modal-content">
+      <h2>Reset Session Timer?</h2>
+      <p>Are you sure you want to reset the current session timer? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="secondary-btn" type="button" onclick="closeResetConfirmation()">Cancel</button>
+        <button class="primary-btn" type="button" onclick="confirmReset()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/supabase-config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/timer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
