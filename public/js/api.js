@@ -70,6 +70,7 @@ function normalizeSession(row) {
     duration,
     durationFormatted: duration ? `${(duration / 3600).toFixed(2)}h` : 'Active',
     isActive: row.is_active,
+    notes: row.notes || '',
     checkInLocation: {
       latitude: row.check_in_latitude,
       longitude: row.check_in_longitude,
@@ -295,12 +296,12 @@ const API = {
     }
   },
 
-  checkOut: async (token, latitude, longitude) => {
+  checkOut: async (token, latitude, longitude, notes) => {
     if (!hasSupabaseConfig()) {
       return expressRequest('/sessions/check-out', {
         method: 'POST',
         token,
-        body: { latitude, longitude },
+        body: { latitude, longitude, notes },
       });
     }
 
@@ -322,6 +323,7 @@ const API = {
           check_out_latitude: latitude,
           check_out_longitude: longitude,
           is_active: false,
+          notes,
         }),
       });
 
@@ -371,6 +373,38 @@ const API = {
       };
     } catch (error) {
       return { success: false, message: error.message, session: null };
+    }
+  },
+
+  resetSession: async (token) => {
+    if (!hasSupabaseConfig()) {
+      return expressRequest('/sessions/reset', { method: 'POST', token });
+    }
+
+    try {
+      const active = await API.getCurrentSession(token);
+      if (!active.success || !active.session) {
+        return { success: false, message: 'No active session' };
+      }
+
+      const now = new Date().toISOString();
+      const rows = await supabaseFetch(`/rest/v1/ojt_sessions?id=eq.${active.session.id}&select=*`, {
+        method: 'PATCH',
+        token,
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({
+          start_time: now,
+          duration_seconds: 0,
+        }),
+      });
+
+      return {
+        success: true,
+        message: 'Session timer reset',
+        session: rows?.[0] ? normalizeSession(rows[0]) : null,
+      };
+    } catch (error) {
+      return { success: false, message: error.message };
     }
   },
 };

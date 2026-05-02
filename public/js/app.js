@@ -7,6 +7,26 @@ let allSessions = [];
 let currentPage = 'login';
 
 const RING_CIRCUMFERENCE = 364.42;
+const THEME_KEY = 'ojeyt-theme';
+let currentTheme = 'light';
+
+function applyTheme(theme) {
+  currentTheme = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = currentTheme;
+  localStorage.setItem(THEME_KEY, currentTheme);
+  const toggleBtn = document.getElementById('theme-toggle-btn');
+  if (toggleBtn) toggleBtn.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+}
+
+function loadThemePreference() {
+  const savedTheme = localStorage.getItem(THEME_KEY);
+  const theme = savedTheme === 'dark' ? 'dark' : 'light';
+  applyTheme(theme);
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+}
 
 function navTo(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -132,9 +152,74 @@ function resetSessionUI() {
   const icon = document.querySelector('#main-btn .btn-icon');
   if (icon) icon.textContent = '↪';
   document.getElementById('location-status').style.display = 'none';
+  document.getElementById('timer-controls').style.display = 'none';
+  document.getElementById('session-note-row').style.display = 'none';
+  resetSessionNote();
+}
+
+function showResetConfirmation() {
+  document.getElementById('reset-confirmation-modal').style.display = 'grid';
+}
+
+function closeResetConfirmation() {
+  document.getElementById('reset-confirmation-modal').style.display = 'none';
+}
+
+async function confirmReset() {
+  closeResetConfirmation();
+  const result = await API.resetSession(auth.getToken());
+  if (!result.success) {
+    showToast(result.message || 'Unable to reset timer');
+    return;
+  }
+  startTimer(result.session.startTime);
+  document.getElementById('timer-display').textContent = '00:00:00';
+  document.getElementById('status-badge').textContent = 'Session in progress';
+  document.getElementById('timer-display').classList.remove('is-paused');
+  showToast('Session timer reset');
+}
+
+function togglePause(forcePause = false) {
+  const pauseBtn = document.getElementById('pause-resume-btn');
+  if (!pauseBtn) return;
+  if (Timer.getIsPaused() || forcePause) {
+    Timer.resume(formatted => {
+      document.getElementById('timer-display').textContent = formatted;
+    });
+    pauseBtn.textContent = '⏸ Pause';
+    document.getElementById('status-badge').textContent = 'Session in progress';
+    document.getElementById('timer-display').classList.remove('is-paused');
+    return;
+  }
+
+  Timer.pause();
+  pauseBtn.textContent = '▶ Resume';
+  document.getElementById('status-badge').textContent = 'Paused';
+  document.getElementById('timer-display').classList.add('is-paused');
+}
+
+function updateTimerControlState() {
+  document.getElementById('timer-controls').style.display = 'grid';
+  document.getElementById('session-note-row').style.display = 'grid';
+  const pauseBtn = document.getElementById('pause-resume-btn');
+  if (Timer.getIsPaused()) {
+    pauseBtn.textContent = '▶ Resume';
+    document.getElementById('status-badge').textContent = 'Paused';
+    document.getElementById('timer-display').classList.add('is-paused');
+  } else {
+    pauseBtn.textContent = '⏸ Pause';
+    document.getElementById('status-badge').textContent = 'Session in progress';
+    document.getElementById('timer-display').classList.remove('is-paused');
+  }
+}
+
+function resetSessionNote() {
+  const noteInput = document.getElementById('session-note');
+  if (noteInput) noteInput.value = '';
 }
 
 async function initializeApp() {
+  loadThemePreference();
   setupEventListeners();
 
   if (auth.isAuthenticated) {
@@ -232,6 +317,291 @@ function setupEventListeners() {
       setButtonLoading(submitBtn, false);
     }
   });
+
+  document.getElementById('dtr-include-signature')?.addEventListener('change', (e) => {
+    toggleSignatureSection(e.target.checked);
+  });
+}
+
+function exportHistory() {
+  const sessions = completedSessions();
+  if (!sessions.length) {
+    showToast('No session history to export');
+    return;
+  }
+
+  const headers = ['Date', 'Check-in Time', 'Check-out Time', 'Duration', 'Session Note'];
+  const rows = sessions.map(session => {
+    const start = new Date(session.startTime);
+    const end = session.endTime ? new Date(session.endTime) : null;
+    const date = start.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    const timeIn = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const timeOut = end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active';
+    return [date, timeIn, timeOut, formatDuration(session.duration), session.notes || ''];
+  });
+
+  const csv = [headers, ...rows]
+    .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ojeyt_history_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast('Session history exported');
+}
+
+// === DTR MODAL ===
+function openDTRModal() {
+  document.getElementById('dtr-modal').style.display = 'grid';
+  // Pre-fill with user data if available
+  const user = currentUser;
+  if (user) {
+    document.getElementById('dtr-full-name').value = user.fullName || '';
+  }
+}
+
+function closeDTRModal() {
+  document.getElementById('dtr-modal').style.display = 'none';
+  document.getElementById('dtr-form').reset();
+  toggleSignatureSection(false);
+}
+
+function toggleSignatureSection(show) {
+  const section = document.getElementById('signature-section');
+  if (show) {
+    section.style.display = 'grid';
+    section.classList.remove('hidden');
+  } else {
+    section.classList.add('hidden');
+    setTimeout(() => section.style.display = 'none', 300);
+  }
+}
+
+// === VALIDATION ===
+function validateDTRForm() {
+  const requiredFields = [
+    'dtr-full-name', 'dtr-school', 'dtr-department', 'dtr-company', 'dtr-position'
+  ];
+  let valid = true;
+  requiredFields.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el.value.trim()) {
+      el.style.borderColor = '#c0392b';
+      valid = false;
+    } else {
+      el.style.borderColor = '#e5eaf2';
+    }
+  });
+  if (document.getElementById('dtr-include-signature').checked) {
+    const sigFields = ['dtr-supervisor-name', 'dtr-supervisor-title'];
+    sigFields.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el.value.trim()) {
+        el.style.borderColor = '#c0392b';
+        valid = false;
+      } else {
+        el.style.borderColor = '#e5eaf2';
+      }
+    });
+  }
+  return valid;
+}
+
+// === PDF PRINT ===
+function exportDTR(type) {
+  if (!validateDTRForm()) {
+    showToast('Please fill in all required fields');
+    return;
+  }
+
+  const data = getDTRData();
+  if (type === 'print') {
+    generateDTRPrint(data);
+  } else if (type === 'csv') {
+    generateDTRCSV(data);
+  } else if (type === 'excel') {
+    generateDTRExcel(data);
+  }
+}
+
+function getDTRData() {
+  return {
+    fullName: document.getElementById('dtr-full-name').value.trim(),
+    school: document.getElementById('dtr-school').value.trim(),
+    department: document.getElementById('dtr-department').value.trim(),
+    company: document.getElementById('dtr-company').value.trim(),
+    position: document.getElementById('dtr-position').value.trim(),
+    includeSignature: document.getElementById('dtr-include-signature').checked,
+    supervisorName: document.getElementById('dtr-supervisor-name').value.trim(),
+    supervisorTitle: document.getElementById('dtr-supervisor-title').value.trim(),
+    sessions: completedSessions()
+  };
+}
+
+function generateDTRPrint(data) {
+  const printWindow = window.open('', '_blank');
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>DTR - ${data.fullName}</title>
+      <style>
+        body { font-family: serif; margin: 20px; }
+        .header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 20px; }
+        h1 { text-align: center; margin: 20px 0; }
+        .info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #000; padding: 8px; text-align: center; }
+        .total { font-weight: bold; }
+        .signature { margin-top: 40px; }
+        .signature div { display: inline-block; width: 45%; margin-right: 10%; vertical-align: top; }
+        @media print { body { margin: 0; } }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <span>${new Date().toLocaleString()}</span>
+        <span>DTR - ${data.fullName}</span>
+      </div>
+      <h1>DAILY TIME RECORD<br>On-the-Job Training</h1>
+      <div class="info">
+        <div>Name: ${data.fullName}</div>
+        <div>Company: ${data.company}</div>
+        <div>School: ${data.school}</div>
+        <div>Position: ${data.position}</div>
+        <div>Department / Course: ${data.department}</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Time In - Out</th>
+            <th>Hours</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.sessions.map(s => {
+            const start = new Date(s.startTime);
+            const end = new Date(s.endTime);
+            const date = start.toISOString().slice(0,10);
+            const timeIn = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const timeOut = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const hours = (s.duration / 3600).toFixed(2);
+            return `<tr><td>${date}</td><td>${timeIn} - ${timeOut}</td><td>${hours}</td></tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" class="total">Total Hours:</td>
+            <td class="total">${data.sessions.reduce((sum, s) => sum + s.duration / 3600, 0).toFixed(2)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      ${data.includeSignature ? `
+        <div class="signature">
+          <p>Certified Correct:</p>
+          <div>
+            _______________________________<br>
+            ${data.supervisorName}<br>
+            ${data.supervisorTitle}
+          </div>
+          <div>
+            _______________________________<br>
+            Intern Signature<br>
+            Date: _______________
+          </div>
+        </div>
+      ` : ''}
+    </body>
+    </html>
+  `;
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.print();
+}
+
+// === CSV EXPORT ===
+function generateDTRCSV(data) {
+  const rows = [
+    ['DAILY TIME RECORD - OJT'],
+    ['Name:', data.fullName],
+    ['School:', data.school],
+    ['Department/Course:', data.department],
+    ['Company:', data.company],
+    ['Position:', data.position],
+    [''],
+    ['Date', 'Time In', 'Time Out', 'Hours'],
+    ...data.sessions.map(s => {
+      const start = new Date(s.startTime);
+      const end = new Date(s.endTime);
+      const date = start.toISOString().slice(0,10);
+      const timeIn = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const timeOut = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const hours = (s.duration / 3600).toFixed(2);
+      return [date, timeIn, timeOut, hours];
+    }),
+    ['', '', '', ''],
+    ['Total Hours:', '', '', data.sessions.reduce((sum, s) => sum + s.duration / 3600, 0).toFixed(2)]
+  ];
+
+  const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `DTR_${data.fullName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  closeDTRModal();
+  showToast('DTR CSV exported');
+}
+
+// === EXCEL EXPORT ===
+function generateDTRExcel(data) {
+  const wsData = [
+    ['DAILY TIME RECORD - OJT'],
+    ['Name:', data.fullName],
+    ['School:', data.school],
+    ['Department/Course:', data.department],
+    ['Company:', data.company],
+    ['Position:', data.position],
+    [''],
+    ['Date', 'Time In', 'Time Out', 'Hours'],
+    ...data.sessions.map(s => {
+      const start = new Date(s.startTime);
+      const end = new Date(s.endTime);
+      const date = start.toISOString().slice(0,10);
+      const timeIn = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const timeOut = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const hours = (s.duration / 3600).toFixed(2);
+      return [date, timeIn, timeOut, hours];
+    }),
+    ['', '', '', ''],
+    ['Total Hours:', '', '', data.sessions.reduce((sum, s) => sum + s.duration / 3600, 0).toFixed(2)]
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  // Apply bold
+  const boldCells = ['A1', 'A8', 'D' + (wsData.length)];
+  boldCells.forEach(cell => {
+    if (ws[cell]) ws[cell].s = { font: { bold: true } };
+  });
+  // Column widths
+  ws['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'DTR');
+  XLSX.writeFile(wb, `DTR_${data.fullName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  closeDTRModal();
+  showToast('DTR Excel exported');
 }
 
 function logout() {
@@ -335,10 +705,11 @@ function checkOut() {
 
 async function completeCheckout(latitude, longitude) {
   const mainBtn = document.getElementById('main-btn');
+  const note = document.getElementById('session-note')?.value.trim() || undefined;
   let result = null;
   setButtonLoading(mainBtn, true, '...');
   try {
-    result = await API.checkOut(auth.getToken(), latitude, longitude);
+    result = await API.checkOut(auth.getToken(), latitude, longitude, note);
   } finally {
     setButtonLoading(mainBtn, false);
   }
@@ -374,6 +745,7 @@ function startTimer(startTime) {
   document.getElementById('main-btn').setAttribute('aria-label', 'Check out');
   const icon = document.querySelector('#main-btn .btn-icon');
   if (icon) icon.textContent = '⇥';
+  updateTimerControlState();
 }
 
 function renderBackendStatus() {
@@ -412,7 +784,64 @@ function updateDashboard() {
   const offset = RING_CIRCUMFERENCE - (percentage / 100) * RING_CIRCUMFERENCE;
   document.getElementById('progress-circle-fill').style.strokeDashoffset = offset;
 
+  const estimateText = () => {
+    if (remainingHours <= 0) return 'Target reached — great work!';
+    if (uniqueDays < 2 || totalHours <= 0) return 'Log more sessions to see your estimated finish date.';
+    const averageDaily = totalHours / uniqueDays;
+    if (averageDaily <= 0) return 'Log more sessions to see your estimated finish date.';
+    const daysLeft = Math.ceil(remainingHours / averageDaily);
+    const finishDate = new Date();
+    finishDate.setDate(finishDate.getDate() + daysLeft);
+    return finishDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  document.getElementById('estimated-finish').textContent = estimateText();
+  renderWeeklyChart();
   renderRecentSessions();
+}
+
+function renderWeeklyChart() {
+  const container = document.getElementById('weekly-hours-chart');
+  const week = [];
+  const today = new Date();
+  const dayIndex = (today.getDay() + 6) % 7;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayIndex);
+  monday.setHours(0, 0, 0, 0);
+
+  for (let i = 0; i < 7; i += 1) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    week.push({
+      label: date.toLocaleDateString([], { weekday: 'short' }),
+      date,
+      seconds: 0,
+    });
+  }
+
+  completedSessions().forEach(session => {
+    const start = new Date(session.startTime);
+    week.forEach(day => {
+      if (start.toDateString() === day.date.toDateString()) {
+        day.seconds += session.duration || 0;
+      }
+    });
+  });
+
+  const maxSeconds = Math.max(...week.map(day => day.seconds), 3600);
+  container.innerHTML = week.map(day => {
+    const hours = (day.seconds / 3600).toFixed(1);
+    const width = maxSeconds > 0 ? Math.round((day.seconds / maxSeconds) * 100) : 0;
+    return `
+      <div class="chart-row">
+        <span class="chart-label">${day.label}</span>
+        <div class="chart-bar">
+          <div class="chart-fill" style="width:${width}%"></div>
+        </div>
+        <span class="chart-value">${hours}h</span>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderRecentSessions() {
@@ -436,6 +865,7 @@ function renderSessionItem(session) {
       <div class="session-meta">
         <strong>${dateText}</strong>
         <span>${formatTimeRange(session)}</span>
+        ${session.notes ? `<span class="session-note">${session.notes}</span>` : ''}
       </div>
       <div class="session-duration">${formatDuration(session.duration)}</div>
     </div>

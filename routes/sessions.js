@@ -150,7 +150,7 @@ router.post('/check-in', verifyToken, async (req, res) => {
 // ===== CHECK OUT =====
 router.post('/check-out', verifyToken, async (req, res) => {
   try {
-    const { latitude, longitude } = req.body;
+    const { latitude, longitude, notes } = req.body;
 
     // ===== GET ACTIVE SESSION =====
     if (useFileDb()) {
@@ -165,6 +165,7 @@ router.post('/check-out', verifyToken, async (req, res) => {
         endTime,
         isActive: false,
         duration,
+        notes,
         ...(latitude !== undefined && longitude !== undefined && {
           checkOutLocation: { latitude, longitude },
         }),
@@ -182,6 +183,7 @@ router.post('/check-out', verifyToken, async (req, res) => {
           endTime: updatedSession.endTime,
           duration: `${durationHours}h (${durationMins}m)`,
           durationSeconds: updatedSession.duration,
+          notes: updatedSession.notes || '',
         },
       });
     }
@@ -195,9 +197,11 @@ router.post('/check-out', verifyToken, async (req, res) => {
     session.endTime = new Date();
     session.isActive = false;
     session.duration = session.calculateDuration();
-
     if (latitude !== undefined && longitude !== undefined) {
       session.checkOutLocation = { latitude, longitude };
+    }
+    if (notes !== undefined) {
+      session.notes = notes;
     }
 
     await session.save();
@@ -214,11 +218,60 @@ router.post('/check-out', verifyToken, async (req, res) => {
         endTime: session.endTime,
         duration: `${durationHours}h (${durationMins}m)`,
         durationSeconds: session.duration,
+        notes: session.notes || '',
+        notes: session.notes || '',
       },
     });
   } catch (error) {
     console.error('Check-out error:', error);
     res.status(500).json({ success: false, message: 'Error checking out' });
+  }
+});
+
+// ===== RESET ACTIVE SESSION =====
+router.post('/reset', verifyToken, async (req, res) => {
+  try {
+    if (useFileDb()) {
+      const session = fileDb.getActiveSession(req.userId);
+      if (!session) {
+        return res.status(400).json({ success: false, message: 'No active session' });
+      }
+
+      const updatedSession = fileDb.updateSession(session.id, {
+        startTime: new Date().toISOString(),
+        duration: 0,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Session reset successfully',
+        session: updatedSession,
+      });
+    }
+
+    const session = await Session.findOne({ userId: req.userId, isActive: true });
+    if (!session) {
+      return res.status(400).json({ success: false, message: 'No active session' });
+    }
+
+    session.startTime = new Date();
+    session.duration = 0;
+    await session.save();
+
+    res.json({
+      success: true,
+      message: 'Session reset successfully',
+      session: {
+        id: session._id,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        duration: session.duration,
+        notes: session.notes || '',
+      },
+    });
+  } catch (error) {
+    console.error('Reset session error:', error);
+    res.status(500).json({ success: false, message: 'Error resetting session' });
   }
 });
 

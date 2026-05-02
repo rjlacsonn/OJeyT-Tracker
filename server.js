@@ -16,7 +16,7 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'ojeyt-tracker')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ===== MONGODB CONNECTION =====
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/ojeyt-tracker';
@@ -38,7 +38,7 @@ app.use('/api/sessions', sessionRoutes);
 
 // ===== SERVE FRONTEND =====
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'ojeyt-tracker', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ===== ERROR HANDLING =====

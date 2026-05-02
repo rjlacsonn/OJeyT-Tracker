@@ -1,6 +1,3 @@
--- OJeyT Tracker Supabase schema
--- Run this in Supabase Dashboard > SQL Editor.
-
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null default '',
@@ -24,6 +21,7 @@ create table if not exists public.ojt_sessions (
   check_in_longitude double precision,
   check_out_latitude double precision,
   check_out_longitude double precision,
+  notes text,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );

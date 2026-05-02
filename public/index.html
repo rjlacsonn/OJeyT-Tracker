@@ -103,7 +103,8 @@
         </button>
       </nav>
       <div class="account-cluster">
-        <span class="account-avatar">↗</span></span>
+        <button id="theme-toggle-btn" class="icon-btn" type="button" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle Dark / Light Mode">🌙</button>
+        <span class="account-avatar">↗</span>
         <span id="user-email-short" class="account-email"></span>
         <button class="logout-btn" type="button" onclick="logout()" aria-label="Log Out" title="Log Out">Log Out</button>
       </div>
@@ -151,6 +152,11 @@
                 <small>Remaining</small>
               </div>
             </div>
+            <div class="estimated-finish-row">
+              <span>Estimated finish:</span>
+              <strong id="estimated-finish">Log more sessions to see your estimated finish date.</strong>
+            </div>
+            <div id="weekly-hours-chart" class="weekly-chart"></div>
           </article>
 
           <article class="panel timer-panel">
@@ -164,6 +170,12 @@
             <div id="timer-controls" class="timer-controls" style="display:none;">
               <button id="pause-resume-btn" class="secondary-btn" type="button" onclick="togglePause()">⏸ Pause</button>
               <button id="reset-btn" class="secondary-btn" type="button" onclick="showResetConfirmation()">↻ Reset</button>
+            </div>
+            <div id="session-note-row" class="field session-note-row" style="display:none;">
+              <label>
+                <span>Session note (optional)</span>
+                <input id="session-note" type="text" placeholder="Worked on inventory module" maxlength="120" />
+              </label>
             </div>
             <div id="location-status" class="location-status" style="display:none;">
               <span>⌖</span><span id="location-text">Outside office range</span>
@@ -186,8 +198,11 @@
 
     <section id="page-history" class="page app-page" aria-label="Session History">
       <div class="page-heading">
-        <h1>Session History</h1>
-        <p>Review all your check-in and check-out records</p>
+        <div>
+          <h1>Session History</h1>
+          <p>Review all your check-in and check-out records</p>
+        </div>
+        <button id="export-history-btn" class="secondary-btn" type="button" onclick="openDTRModal()">Save / Print DTR</button>
       </div>
       <div class="history-stat-grid">
         <article class="panel stat-panel"><span>□</span><strong id="history-days">0</strong><small>Total Days</small></article>
@@ -273,6 +288,58 @@
     </div>
   </div>
 
+  <!-- DTR Modal -->
+  <div id="dtr-modal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeDTRModal()"></div>
+    <div class="modal-content dtr-modal-content">
+      <button class="modal-close" onclick="closeDTRModal()" aria-label="Close">&times;</button>
+      <h2>Save / Print DTR</h2>
+      <form id="dtr-form" class="dtr-form">
+        <label class="field">
+          <span>Full Name</span>
+          <input id="dtr-full-name" type="text" placeholder="e.g. RJ Aaron Lacson" required />
+        </label>
+        <label class="field">
+          <span>School / University</span>
+          <input id="dtr-school" type="text" placeholder="e.g. University of the East" required />
+        </label>
+        <label class="field">
+          <span>Department / Course</span>
+          <input id="dtr-department" type="text" placeholder="e.g. BSCS" required />
+        </label>
+        <label class="field">
+          <span>Company / Organization</span>
+          <input id="dtr-company" type="text" placeholder="e.g. Associated Labor Unions" required />
+        </label>
+        <label class="field">
+          <span>Position / Role</span>
+          <input id="dtr-position" type="text" placeholder="e.g. CS Intern" required />
+        </label>
+        <label class="toggle-row">
+          <input id="dtr-include-signature" type="checkbox" />
+          <span>Include signature section</span>
+        </label>
+        <div id="signature-section" class="signature-section" style="display:none;">
+          <p class="hint">The intern fills this in — the supervisor only needs to sign the printed copy.</p>
+          <label class="field">
+            <span>Supervisor / Manager Name</span>
+            <input id="dtr-supervisor-name" type="text" placeholder="e.g. Maria Santos" />
+          </label>
+          <label class="field">
+            <span>Supervisor Position / Title</span>
+            <input id="dtr-supervisor-title" type="text" placeholder="e.g. OJT Coordinator / IT Manager" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="export-btn print-btn" onclick="exportDTR('print')">🖨️ Print / PDF</button>
+          <button type="button" class="export-btn csv-btn" onclick="exportDTR('csv')">📊 CSV</button>
+          <button type="button" class="export-btn excel-btn" onclick="exportDTR('excel')">📗 Excel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="js/supabase-config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
