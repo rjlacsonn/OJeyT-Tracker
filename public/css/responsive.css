@@ -149,6 +149,39 @@
 
 /* ===== MOBILE: SHIFT HISTORY CARD LAYOUT ===== */
 @media (max-width: 600px) {
+  /* ===== FIX PANEL OVERFLOW ===== */
+  .timer-panel {
+    padding: 16px;
+    overflow: hidden;
+  }
+
+  .shift-form {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  /* ===== FIX DATE + TIME INPUTS OVERFLOWING ===== */
+  .shift-form .field input,
+  .shift-form .field input[type="date"],
+  .shift-form .field input[type="time"] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .shift-session {
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .time-fields {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    width: 100%;
+  }
+  
   .shift-session {
     overflow: hidden; /* prevents children from bleeding out */
   }
@@ -162,7 +195,7 @@
     width: 100%;
     min-width: 0; /* critical — removes browser default min-width on time inputs */
   }
-  
+
   .shift-history-table {
     overflow-x: visible;
   }
