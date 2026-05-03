@@ -11,7 +11,7 @@
     gap: 0;
     box-sizing: border-box;
   }
-
+  
   /* ===== ROW 1 LEFT: LOGO ===== */
   .brand-button {
     order: 1;
@@ -152,12 +152,13 @@
   /* ===== FIX PANEL OVERFLOW ===== */
   .timer-panel {
     padding: 16px;
-    overflow: hidden;
+    box-sizing: border-box;
+    overflow: visible;
   }
 
   .shift-form {
     width: 100%;
-    overflow: hidden;
+    box-sizing: border-box;
   }
 
   /* ===== FIX DATE + TIME INPUTS OVERFLOWING ===== */
@@ -168,12 +169,14 @@
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
+    border-radius: var(--radius-sm); /* ensure rounded corners stay */
   }
 
   .shift-session {
-    overflow: hidden;
+    overflow: visible; /* was hidden — that was clipping the right rounded corners */
     width: 100%;
     box-sizing: border-box;
+    padding: 14px; /* tighten padding so content fits */
   }
 
   .time-fields {
@@ -181,7 +184,7 @@
     gap: 12px;
     width: 100%;
   }
-  
+
   .shift-session {
     overflow: hidden; /* prevents children from bleeding out */
   }
