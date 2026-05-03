@@ -4,19 +4,22 @@
     height: auto;
     min-height: 58px;
     grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
     padding: 8px 0;
   }
 
   .top-nav {
     grid-column: 1 / -1;
-    order: 3;
-    justify-content: flex-start;
+    grid-row: 2;
+    justify-content: center;
     gap: 16px;
     overflow-x: auto;
     padding-bottom: 4px;
   }
 
   .account-cluster {
+    grid-row: 1;
+    grid-column: 2;
     max-width: 180px;
   }
 
@@ -31,6 +34,17 @@
 
   .recent-panel {
     min-height: 0;
+  }
+
+  /* ===== SHIFT HISTORY SCROLL ON TABLET ===== */
+  .shift-history-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .shift-history-table .table-header,
+  .shift-history-table .shift-row {
+    min-width: 560px;
   }
 }
 
@@ -82,6 +96,63 @@
   }
 }
 
+/* ===== MOBILE: SHIFT HISTORY CARD LAYOUT ===== */
+@media (max-width: 600px) {
+  .shift-history-table {
+    overflow-x: visible;
+  }
+
+  .shift-history-table .table-header {
+    display: none;
+  }
+
+  .shift-history-table .shift-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    min-width: unset;
+    padding: 14px 12px;
+    border-radius: 10px;
+    background: var(--card);
+    margin-bottom: 10px;
+    border: 1px solid #f0f3f8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .shift-row .shift-date {
+    grid-column: 1 / -1;
+    font-weight: 700;
+    font-size: 0.9rem;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f3f8;
+    margin-bottom: 4px;
+  }
+
+  .shift-row .time-range {
+    font-size: 0.8rem;
+    line-height: 1.6;
+  }
+
+  .shift-row .total-hours {
+    grid-column: 1 / -1;
+    text-align: left;
+    font-size: 1rem;
+  }
+
+  .shift-row .shift-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+  }
+
+  .shift-actions button {
+    flex: 1;
+    text-align: center;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+}
+
 @media (max-width: 440px) {
   .history-stat-grid,
   .mini-stats {
@@ -99,5 +170,18 @@
   .input-suffix {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .time-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
+
+  .export-btn {
+    width: 100%;
+    justify-content: center;
   }
 }

@@ -32,9 +32,11 @@ const Session = require('./models/Session');
 // ===== ROUTES =====
 const authRoutes = require('./routes/auth');
 const sessionRoutes = require('./routes/sessions');
+const shiftRoutes = require('./routes/shifts');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/shifts', shiftRoutes);
 
 // ===== SERVE FRONTEND =====
 app.get('/', (req, res) => {

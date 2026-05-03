@@ -238,10 +238,6 @@ const API = {
         body: JSON.stringify({
           full_name: data.fullName || me.user.fullName,
           required_hours: data.requiredHours,
-          office_latitude: data.officeLocation?.latitude,
-          office_longitude: data.officeLocation?.longitude,
-          office_radius: data.officeLocation?.radius,
-          auto_check_in: data.autoCheckIn,
         }),
       });
 
@@ -402,6 +398,76 @@ const API = {
         success: true,
         message: 'Session timer reset',
         session: rows?.[0] ? normalizeSession(rows[0]) : null,
+      };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  },
+
+  saveShift: async (token, shiftData) => {
+    if (!hasSupabaseConfig()) {
+      return expressRequest('/shifts', {
+        method: 'POST',
+        token,
+        body: shiftData,
+      });
+    }
+
+    try {
+      const rows = await supabaseFetch('/rest/v1/shifts?select=*', {
+        method: 'POST',
+        token,
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(shiftData),
+      });
+
+      return {
+        success: true,
+        message: 'Shift saved successfully',
+        shift: rows?.[0],
+      };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  },
+
+  getShifts: async (token) => {
+    if (!hasSupabaseConfig()) {
+      return expressRequest('/shifts', { token });
+    }
+
+    try {
+      const rows = await supabaseFetch('/rest/v1/shifts?select=*&order=date.desc', {
+        method: 'GET',
+        token,
+      });
+      return {
+        success: true,
+        shifts: rows || [],
+        total: rows?.length || 0,
+      };
+    } catch (error) {
+      return { success: false, message: error.message, shifts: [] };
+    }
+  },
+
+  deleteShift: async (token, shiftId) => {
+    if (!hasSupabaseConfig()) {
+      return expressRequest(`/shifts/${shiftId}`, {
+        method: 'DELETE',
+        token,
+      });
+    }
+
+    try {
+      await supabaseFetch(`/rest/v1/shifts?id=eq.${shiftId}`, {
+        method: 'DELETE',
+        token,
+      });
+
+      return {
+        success: true,
+        message: 'Shift deleted successfully',
       };
     } catch (error) {
       return { success: false, message: error.message };

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="OJeyT Tracker - Track your OJT hours with ease" />
   <title>OJeyT Tracker</title>
-  <link rel="icon" type="image/png" href="public/logo.png">
+  <link rel="icon" type="image/png" href="new-logo.png">
   <link rel="stylesheet" href="css/reset.css" />
   <link rel="stylesheet" href="css/variables.css" />
   <link rel="stylesheet" href="css/layout.css" />
@@ -104,7 +104,6 @@
       </nav>
       <div class="account-cluster">
         <button id="theme-toggle-btn" class="icon-btn" type="button" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle Dark / Light Mode">🌙</button>
-        <span class="account-avatar">↗</span>
         <span id="user-email-short" class="account-email"></span>
         <button class="logout-btn" type="button" onclick="logout()" aria-label="Log Out" title="Log Out">Log Out</button>
       </div>
@@ -160,26 +159,67 @@
           </article>
 
           <article class="panel timer-panel">
-            <span class="eyebrow">Current Session</span>
-            <div id="timer-display" class="timer-display">00:00:00</div>
-            <p id="status-badge" class="timer-state">Ready to start</p>
-            <button id="main-btn" class="round-action" type="button" onclick="toggleSession()" aria-label="Check in">
-              <span class="btn-icon">↪</span>
-            </button>
-            <span id="btn-label" class="action-label">Check In</span>
-            <div id="timer-controls" class="timer-controls" style="display:none;">
-              <button id="pause-resume-btn" class="secondary-btn" type="button" onclick="togglePause()">⏸ Pause</button>
-              <button id="reset-btn" class="secondary-btn" type="button" onclick="showResetConfirmation()">↻ Reset</button>
+            <div class="panel-title">
+              <span class="teal-icon">▣</span>
+              <span>Log OJT Shift</span>
             </div>
-            <div id="session-note-row" class="field session-note-row" style="display:none;">
-              <label>
-                <span>Session note (optional)</span>
-                <input id="session-note" type="text" placeholder="Worked on inventory module" maxlength="120" />
-              </label>
-            </div>
-            <div id="location-status" class="location-status" style="display:none;">
-              <span>⌖</span><span id="location-text">Outside office range</span>
-            </div>
+            <form id="shift-form" class="shift-form">
+              <div class="field">
+                <label>Date</label>
+                <input id="shift-date" type="date" required />
+              </div>
+
+              <div class="shift-session">
+                <h4>Morning Session</h4>
+                <div class="time-fields">
+                  <div class="field">
+                    <label>Clock In</label>
+                    <input id="morning-in" type="time" value="08:00" required />
+                  </div>
+                  <div class="field">
+                    <label>Clock Out</label>
+                    <input id="morning-out" type="time" value="12:00" required />
+                  </div>
+                </div>
+                <div class="duration-display">Duration: <span id="morning-duration">4.00 hrs</span></div>
+              </div>
+
+              <div class="shift-session">
+                <h4>Afternoon Session</h4>
+                <div class="time-fields">
+                  <div class="field">
+                    <label>Clock In</label>
+                    <input id="afternoon-in" type="time" value="13:00" required />
+                  </div>
+                  <div class="field">
+                    <label>Clock Out</label>
+                    <input id="afternoon-out" type="time" value="17:00" required />
+                  </div>
+                </div>
+                <div class="duration-display">Duration: <span id="afternoon-duration">4.00 hrs</span></div>
+              </div>
+
+              <div class="shift-session">
+                <h4>Overtime (Optional)</h4>
+                <div class="time-fields">
+                  <div class="field">
+                    <label>Start</label>
+                    <input id="overtime-start" type="time" placeholder="--:--" />
+                  </div>
+                  <div class="field">
+                    <label>End</label>
+                    <input id="overtime-end" type="time" placeholder="--:--" />
+                  </div>
+                </div>
+                <div class="duration-display">Duration: <span id="overtime-duration">0.00 hrs</span></div>
+              </div>
+
+              <div class="total-duration">
+                <strong>Total Shift Duration: <span id="total-duration">8.00 hours</span></strong>
+              </div>
+
+              <button id="save-shift-btn" class="primary-btn" type="submit">Save Shift</button>
+            </form>
           </article>
         </div>
 
@@ -187,11 +227,25 @@
           <div class="panel-head">
             <div class="panel-title">
               <span class="teal-icon">◷</span>
-              <span>Recent Sessions</span>
+              <span>Shift History</span>
             </div>
-            <button class="text-link" type="button" onclick="navTo('history')">View All</button>
+            <div class="filter-controls">
+              <input id="shift-filter-date" type="date" placeholder="Filter by date" />
+            </div>
           </div>
-          <div id="recent-sessions" class="session-list compact-list"></div>
+          <div id="shift-history-table" class="shift-history-table">
+            <div class="table-header">
+              <div>Date</div>
+              <div>Morning</div>
+              <div>Afternoon</div>
+              <div>Overtime</div>
+              <div>Total</div>
+              <div>Actions</div>
+            </div>
+            <div id="shift-history-body" class="table-body">
+              <!-- Shifts will be populated here -->
+            </div>
+          </div>
         </article>
       </div>
     </section>
@@ -242,29 +296,6 @@
               </span>
             </label>
             <p class="hint">ⓘ Your progress ring and remaining hours will update based on this target.</p>
-          </div>
-        </section>
-
-        <section class="settings-block">
-          <h2><span class="teal-icon">⌖</span>Auto Check-in</h2>
-          <div class="settings-card toggle-row">
-            <div>
-              <strong>Enable auto check-in</strong>
-              <span>Automatically check in when you enter the office area</span>
-            </div>
-            <label class="switch">
-              <input id="auto-checkin" type="checkbox" />
-              <span></span>
-            </label>
-          </div>
-        </section>
-
-        <section class="settings-block">
-          <h2><span class="teal-icon">⌖</span>Office Location</h2>
-          <div class="settings-card location-grid">
-            <label class="field"><span>Latitude</span><input id="office-lat" type="number" step="0.0001" placeholder="14.5995" /></label>
-            <label class="field"><span>Longitude</span><input id="office-lon" type="number" step="0.0001" placeholder="120.9842" /></label>
-            <label class="field"><span>Detection Radius</span><input id="office-radius" type="number" min="10" max="1000" step="10" placeholder="100" /></label>
           </div>
         </section>
 
@@ -340,10 +371,10 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-config.js"></script>
-  <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
-  <script src="js/timer.js"></script>
   <script src="js/app.js"></script>
+  
 </body>
 </html>

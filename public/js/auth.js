@@ -1,96 +1,165 @@
 /* ============================================================
-   AUTH — Frontend authentication handler
+   AUTH — Frontend authentication handler (Supabase)
    ============================================================ */
 
 class Auth {
   constructor() {
-    this.token = localStorage.getItem('authToken');
-    this.refreshToken = localStorage.getItem('refreshToken');
-    this.user = JSON.parse(localStorage.getItem('user') || 'null');
-    this.isAuthenticated = !!this.token;
+    this.user = null;
+    this.session = null;
+    this.isAuthenticated = false;
+    this.init();
   }
 
+  async init() {
+    // ===== CHECK EXISTING SUPABASE SESSION =====
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (session) {
+      this.user = session.user;
+      this.session = session;
+      this.isAuthenticated = true;
+    }
+
+    // ===== LISTEN FOR AUTH STATE CHANGES =====
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        this.user = session.user;
+        this.session = session;
+        this.isAuthenticated = true;
+      } else {
+        this.user = null;
+        this.session = null;
+        this.isAuthenticated = false;
+      }
+    });
+  }
+
+  // ===== SIGNUP =====
   async signup(fullName, email, password, confirmPassword, requiredHours) {
     try {
-      const result = await API.signup(fullName, email, password, confirmPassword, requiredHours);
-      if (result.success) {
-        this.setToken(result.token);
-        if (result.refreshToken) this.setRefreshToken(result.refreshToken);
-        this.setUser(result.user);
-        return { success: true, message: result.message };
-      } else {
-        return { success: false, message: result.message };
+      if (!fullName || !email || !password || !confirmPassword) {
+        return { success: false, message: 'All fields are required.' };
       }
+      if (password !== confirmPassword) {
+        return { success: false, message: 'Passwords do not match.' };
+      }
+      if (password.length < 6) {
+        return { success: false, message: 'Password must be at least 6 characters.' };
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: email,
+        password: password,
+        options: {
+          data: {
+            full_name: fullName,
+            required_hours: requiredHours || 200
+          }
+        }
+      });
+
+      if (error) return { success: false, message: error.message };
+
+      // ===== SAVE PROFILE TO SUPABASE PROFILES TABLE =====
+      if (data.user) {
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          full_name: fullName,
+          email: email,
+          required_hours: requiredHours || 200
+        });
+
+        this.user = data.user;
+        this.session = data.session || this.session;
+        this.isAuthenticated = true;
+      }
+
+      return { success: true, message: 'Account created successfully!' };
     } catch (error) {
       return { success: false, message: 'Signup failed: ' + error.message };
     }
   }
 
+  // ===== LOGIN =====
   async login(email, password) {
     try {
-      const result = await API.login(email, password);
-      if (result.success) {
-        this.setToken(result.token);
-        if (result.refreshToken) this.setRefreshToken(result.refreshToken);
-        this.setUser(result.user);
-        return { success: true, message: result.message };
-      } else {
-        return { success: false, message: result.message };
+      if (!email || !password) {
+        return { success: false, message: 'Email and password are required.' };
       }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password
+      });
+
+      if (error) return { success: false, message: error.message };
+
+      this.user = data.user;
+      this.session = data.session || this.session;
+      this.isAuthenticated = true;
+
+      return { success: true, message: 'Login successful!' };
     } catch (error) {
       return { success: false, message: 'Login failed: ' + error.message };
     }
   }
 
+  getToken() {
+    return this.session?.access_token || null;
+  }
+
+  setUser(user) {
+    this.user = user;
+  }
+
+  // ===== REFRESH / GET CURRENT USER =====
+
   async refreshUser() {
-    if (!this.token) return null;
     try {
-      const result = await API.getMe(this.token);
-      if (result.success) {
-        this.setUser(result.user);
-        return result.user;
-      } else {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
         this.logout();
         return null;
       }
+      this.user = user;
+      this.isAuthenticated = true;
+      return user;
     } catch (error) {
       console.error('Refresh user error:', error);
       return null;
     }
   }
 
-  setToken(token) {
-    this.token = token;
-    localStorage.setItem('authToken', token);
-    this.isAuthenticated = true;
+  // ===== LOGOUT =====
+  async logout() {
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      this.user = null;
+      this.isAuthenticated = false;
+      // ===== CLEAR ANY OLD LOCALSTORAGE REMNANTS =====
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+    }
   }
 
-  setUser(user) {
-    this.user = user;
-    localStorage.setItem('user', JSON.stringify(user));
-  }
-
-  setRefreshToken(refreshToken) {
-    this.refreshToken = refreshToken;
-    localStorage.setItem('refreshToken', refreshToken);
-  }
-
-  logout() {
-    this.token = null;
-    this.refreshToken = null;
-    this.user = null;
-    this.isAuthenticated = false;
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-  }
-
-  getToken() {
-    return this.token;
-  }
-
+  // ===== GETTERS =====
   getUser() {
     return this.user;
+  }
+
+  getUserName() {
+    return this.user?.user_metadata?.full_name || this.user?.email || 'User';
+  }
+
+  getUserEmail() {
+    return this.user?.email || '';
+  }
+
+  getUserId() {
+    return this.user?.id || null;
   }
 }
 

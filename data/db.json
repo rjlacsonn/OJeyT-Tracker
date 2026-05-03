@@ -29,6 +29,21 @@
       "autoCheckIn": false,
       "createdAt": "2026-05-01T06:46:46.715Z",
       "updatedAt": "2026-05-01T06:46:46.715Z"
+    },
+    {
+      "id": "test-user-123",
+      "fullName": "Test User",
+      "email": "test@example.com",
+      "password": "$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi", 
+      "requiredHours": 200,
+      "officeLocation": {
+        "latitude": 14.5995,
+        "longitude": 120.9842,
+        "radius": 100
+      },
+      "autoCheckIn": false,
+      "createdAt": "2026-05-03T00:00:00.000Z",
+      "updatedAt": "2026-05-03T00:00:00.000Z"
     }
   ],
   "sessions": [

@@ -1,15 +1,17 @@
 /* ============================================================
-   APP - OJeyT Tracker
+   APP - OJeyT Tracker (Supabase Edition)
    ============================================================ */
 
 let currentUser = null;
-let allSessions = [];
+let allShifts = [];
 let currentPage = 'login';
+let editingShiftId = null;
 
 const RING_CIRCUMFERENCE = 364.42;
 const THEME_KEY = 'ojeyt-theme';
 let currentTheme = 'light';
 
+// === THEME ===
 function applyTheme(theme) {
   currentTheme = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = currentTheme;
@@ -20,14 +22,14 @@ function applyTheme(theme) {
 
 function loadThemePreference() {
   const savedTheme = localStorage.getItem(THEME_KEY);
-  const theme = savedTheme === 'dark' ? 'dark' : 'light';
-  applyTheme(theme);
+  applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
 }
 
 function toggleTheme() {
   applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
 }
 
+// === NAVIGATION ===
 function navTo(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const targetPage = document.getElementById(`page-${page}`);
@@ -38,11 +40,15 @@ function navTo(page) {
   if (navBtn) navBtn.classList.add('active');
 
   currentPage = page;
-  if (page === 'dashboard') updateDashboard();
+  if (page === 'dashboard') {
+    updateDashboard();
+    setDefaultShiftDate();
+  }
   if (page === 'history') renderHistoryPage();
   if (page === 'settings') renderSettingsPage();
 }
 
+// === TOAST ===
 function showToast(message) {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -53,8 +59,9 @@ function showToast(message) {
   setTimeout(() => toast.remove(), 3200);
 }
 
+// === AUTH UI HELPERS ===
 function showAuthHelp() {
-  showToast('Create an account with your email and password. If Supabase email confirmation is on, confirm your email before signing in.');
+  showToast('Create an account with your email and password. Confirm your email before signing in if required.');
 }
 
 function setFormError(id, message = '') {
@@ -71,7 +78,6 @@ function clearAuthErrors() {
 
 function setButtonLoading(button, isLoading, loadingText) {
   if (!button) return;
-
   button.disabled = isLoading;
   button.classList.toggle('is-loading', isLoading);
   if (isLoading) {
@@ -92,165 +98,714 @@ function getFirstName(fullName) {
   return (fullName || 'User').trim().split(/\s+/)[0];
 }
 
-function formatDuration(seconds) {
-  const safeSeconds = Math.max(0, seconds || 0);
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.round((safeSeconds % 3600) / 60);
-  if (hours <= 0) return `${minutes}m`;
-  if (minutes <= 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
-}
-
-function formatTimeRange(session) {
-  const start = new Date(session.startTime);
-  const end = session.endTime ? new Date(session.endTime) : null;
-  const timeOptions = { hour: '2-digit', minute: '2-digit' };
-  const startText = start.toLocaleTimeString([], timeOptions);
-  const endText = end ? end.toLocaleTimeString([], timeOptions) : 'Active';
-  return `${startText} — ${endText}`;
-}
-
-function completedSessions() {
-  return allSessions.filter(session => !session.isActive);
-}
-
-function groupedSessions(sessions) {
-  return sessions.reduce((groups, session) => {
-    const date = new Date(session.startTime);
-    const key = date.toLocaleDateString([], {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(session);
-    return groups;
-  }, {});
-}
-
+// === SHOW/HIDE APP ===
 function showAuthUI(target = 'login') {
   document.getElementById('topbar-container').style.display = 'none';
   document.getElementById('main-content-container').style.display = 'none';
-  navTo(target);
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const targetPage = document.getElementById(`page-${target}`);
+  if (targetPage) targetPage.classList.add('active');
+  currentPage = target;
 }
 
 function showAppUI() {
   document.getElementById('topbar-container').style.display = '';
   document.getElementById('main-content-container').style.display = '';
-  document.getElementById('user-email-short').textContent = truncateEmail(currentUser.email);
+  const emailEl = document.getElementById('user-email-short');
+  if (emailEl) emailEl.textContent = truncateEmail(currentUser?.email || '');
   navTo('dashboard');
 }
 
-function resetSessionUI() {
-  Timer.stop();
-  document.getElementById('status-badge').textContent = 'Ready to start';
-  document.getElementById('btn-label').textContent = 'Check In';
-  document.getElementById('timer-display').textContent = '00:00:00';
-  document.getElementById('main-btn').classList.remove('is-active');
-  document.getElementById('main-btn').setAttribute('aria-label', 'Check in');
-  const icon = document.querySelector('#main-btn .btn-icon');
-  if (icon) icon.textContent = '↪';
-  document.getElementById('location-status').style.display = 'none';
-  document.getElementById('timer-controls').style.display = 'none';
-  document.getElementById('session-note-row').style.display = 'none';
-  resetSessionNote();
-}
-
-function showResetConfirmation() {
-  document.getElementById('reset-confirmation-modal').style.display = 'grid';
-}
-
-function closeResetConfirmation() {
-  document.getElementById('reset-confirmation-modal').style.display = 'none';
-}
-
-async function confirmReset() {
-  closeResetConfirmation();
-  const result = await API.resetSession(auth.getToken());
-  if (!result.success) {
-    showToast(result.message || 'Unable to reset timer');
-    return;
-  }
-  startTimer(result.session.startTime);
-  document.getElementById('timer-display').textContent = '00:00:00';
-  document.getElementById('status-badge').textContent = 'Session in progress';
-  document.getElementById('timer-display').classList.remove('is-paused');
-  showToast('Session timer reset');
-}
-
-function togglePause(forcePause = false) {
-  const pauseBtn = document.getElementById('pause-resume-btn');
-  if (!pauseBtn) return;
-  if (Timer.getIsPaused() || forcePause) {
-    Timer.resume(formatted => {
-      document.getElementById('timer-display').textContent = formatted;
-    });
-    pauseBtn.textContent = '⏸ Pause';
-    document.getElementById('status-badge').textContent = 'Session in progress';
-    document.getElementById('timer-display').classList.remove('is-paused');
-    return;
-  }
-
-  Timer.pause();
-  pauseBtn.textContent = '▶ Resume';
-  document.getElementById('status-badge').textContent = 'Paused';
-  document.getElementById('timer-display').classList.add('is-paused');
-}
-
-function updateTimerControlState() {
-  document.getElementById('timer-controls').style.display = 'grid';
-  document.getElementById('session-note-row').style.display = 'grid';
-  const pauseBtn = document.getElementById('pause-resume-btn');
-  if (Timer.getIsPaused()) {
-    pauseBtn.textContent = '▶ Resume';
-    document.getElementById('status-badge').textContent = 'Paused';
-    document.getElementById('timer-display').classList.add('is-paused');
-  } else {
-    pauseBtn.textContent = '⏸ Pause';
-    document.getElementById('status-badge').textContent = 'Session in progress';
-    document.getElementById('timer-display').classList.remove('is-paused');
-  }
-}
-
-function resetSessionNote() {
-  const noteInput = document.getElementById('session-note');
-  if (noteInput) noteInput.value = '';
-}
-
-async function initializeApp() {
-  loadThemePreference();
-  setupEventListeners();
-
-  if (auth.isAuthenticated) {
-    await loadUserData();
-    if (currentUser) {
-      await resumeActiveSession();
-      showAppUI();
-      return;
-    }
-  }
-
+// === LOGOUT ===
+async function logout() {
+  await auth.logout();
+  currentUser = null;
+  allShifts = [];
   showAuthUI('login');
+  showToast('Logged out');
 }
 
+// === LOAD DATA ===
 async function loadUserData() {
   const user = await auth.refreshUser();
   if (!user) {
     currentUser = null;
     return;
   }
-
   currentUser = user;
-  await loadAllSessions();
+
+  // ===== LOAD PROFILE FROM SUPABASE =====
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if (profile) {
+    currentUser.fullName = profile.full_name;
+    currentUser.requiredHours = profile.required_hours || 200;
+  } else {
+    currentUser.fullName = user.user_metadata?.full_name || '';
+    currentUser.requiredHours = user.user_metadata?.required_hours || 200;
+  }
+
+  await loadAllShifts();
   updateDashboard();
 }
 
-async function loadAllSessions() {
-  const result = await API.getSessions(auth.getToken());
-  allSessions = result.success ? (result.sessions || []) : [];
+// === SHIFTS (SUPABASE) ===
+async function loadAllShifts() {
+  if (!currentUser) return;
+  const { data, error } = await supabase
+    .from('shifts')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('date', { ascending: false });
+
+  if (error) {
+    console.error('Load shifts error:', error);
+    allShifts = [];
+  } else {
+    allShifts = data || [];
+  }
 }
 
+// === SHIFT FORM ===
+function setDefaultShiftDate() {
+  const dateInput = document.getElementById('shift-date');
+  if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
+}
+
+function calculateDuration(startTime, endTime) {
+  if (!startTime || !endTime) return 0;
+  const cleanStart = String(startTime).slice(0, 5);
+  const cleanEnd = String(endTime).slice(0, 5);
+  const start = new Date(`1970-01-01T${cleanStart}:00`);
+  const end = new Date(`1970-01-01T${cleanEnd}:00`);
+  if (isNaN(start) || isNaN(end) || end <= start) return 0;
+  return (end - start) / (1000 * 60 * 60);
+}
+
+function updateShiftDurations() {
+  const morningIn = String(document.getElementById('morning-in')?.value || '').slice(0, 5);
+  const morningOut = String(document.getElementById('morning-out')?.value || '').slice(0, 5);
+  const afternoonIn = String(document.getElementById('afternoon-in')?.value || '').slice(0, 5);
+  const afternoonOut = String(document.getElementById('afternoon-out')?.value || '').slice(0, 5);
+  const overtimeStart = String(document.getElementById('overtime-start')?.value || '').slice(0, 5);
+  const overtimeEnd = String(document.getElementById('overtime-end')?.value || '').slice(0, 5);
+
+  const morningDuration = calculateDuration(morningIn, morningOut);
+  const afternoonDuration = calculateDuration(afternoonIn, afternoonOut);
+  const overtimeDuration = calculateDuration(overtimeStart, overtimeEnd);
+  const totalDuration = morningDuration + afternoonDuration + overtimeDuration;
+
+  const morningEl = document.getElementById('morning-duration');
+  const afternoonEl = document.getElementById('afternoon-duration');
+  const overtimeEl = document.getElementById('overtime-duration');
+  const totalEl = document.getElementById('total-duration');
+
+  if (morningEl) morningEl.textContent = `${morningDuration.toFixed(2)} hrs`;
+  if (afternoonEl) afternoonEl.textContent = `${afternoonDuration.toFixed(2)} hrs`;
+  if (overtimeEl) overtimeEl.textContent = `${overtimeDuration.toFixed(2)} hrs`;
+  if (totalEl) totalEl.textContent = `${totalDuration.toFixed(2)} hours`;
+}
+
+async function saveShift() {
+  const date = document.getElementById('shift-date')?.value;
+  const morningIn = String(document.getElementById('morning-in')?.value || '').slice(0, 5);
+  const morningOut = String(document.getElementById('morning-out')?.value || '').slice(0, 5);
+
+  if (!date || !morningIn || !morningOut) {
+    showToast('Please fill in date, morning clock-in, and clock-out times');
+    return;
+  }
+
+  const afternoonIn = String(document.getElementById('afternoon-in')?.value || '').slice(0, 5) || null;
+  const afternoonOut = String(document.getElementById('afternoon-out')?.value || '').slice(0, 5) || null;
+  const overtimeStart = String(document.getElementById('overtime-start')?.value || '').slice(0, 5) || null;
+  const overtimeEnd = String(document.getElementById('overtime-end')?.value || '').slice(0, 5) || null;
+
+  const morningHours = calculateDuration(morningIn, morningOut);
+  const afternoonHours = calculateDuration(afternoonIn, afternoonOut);
+  const overtimeHours = calculateDuration(overtimeStart, overtimeEnd);
+  const totalHours = morningHours + afternoonHours + overtimeHours;
+
+  const shiftPayload = {
+    date: date,
+    morning_in: morningIn,
+    morning_out: morningOut,
+    afternoon_in: afternoonIn || null,
+    afternoon_out: afternoonOut || null,
+    overtime_start: overtimeStart || null,
+    overtime_end: overtimeEnd || null,
+    total_hours: totalHours
+  };
+
+  let saveError;
+
+  if (editingShiftId) {
+    console.log('=== UPDATING shift:', editingShiftId, shiftPayload);
+
+    const { data, error } = await supabase
+      .from('shifts')
+      .update(shiftPayload)
+      .eq('id', editingShiftId)
+      .eq('user_id', currentUser.id)
+      .select();
+
+    console.log('=== UPDATE result data:', data, 'error:', error);
+    saveError = error;
+    editingShiftId = null;
+
+  } else {
+    console.log('=== INSERTING new shift:', shiftPayload);
+
+    const { data, error } = await supabase
+      .from('shifts')
+      .insert({ ...shiftPayload, user_id: currentUser.id })
+      .select();
+
+    console.log('=== INSERT result data:', data, 'error:', error);
+    saveError = error;
+  }
+
+  if (saveError) {
+    showToast('Failed to save shift: ' + saveError.message);
+    console.error('Save error:', saveError);
+    return;
+  }
+
+  showToast(`✅ Shift saved — ${totalHours.toFixed(2)} hrs logged`);
+  document.getElementById('shift-form')?.reset();
+
+  const saveBtn = document.getElementById('save-shift-btn');
+  if (saveBtn) saveBtn.textContent = 'Save Shift';
+
+  setDefaultShiftDate();
+  updateShiftDurations();
+  await loadAllShifts();
+  updateDashboard();
+}
+
+// === SHIFT HISTORY TABLE ===
+function renderShiftHistory() {
+  const container = document.getElementById('shift-history-body');
+  if (!container) return;
+
+  const filterDate = document.getElementById('shift-filter-date')?.value;
+  let shiftsToShow = [...allShifts];
+
+  if (filterDate) {
+    shiftsToShow = shiftsToShow.filter(shift => shift.date === filterDate);
+  }
+
+  shiftsToShow.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (!shiftsToShow.length) {
+    container.innerHTML = '<p class="empty-state">No shifts found. Log your first shift above.</p>';
+    return;
+  }
+
+  // ===== HELPER: FORMAT TIME FROM HH:MM:SS TO HH:MM AM/PM =====
+  function formatTime(t) {
+    if (!t) return null;
+    const clean = String(t).slice(0, 5);
+    const [h, m] = clean.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return null;
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hour = h % 12 || 12;
+    return `${hour}:${String(m).padStart(2, '0')} ${period}`;
+  }
+
+  // ===== HELPER: CALCULATE DURATION FROM SUPABASE TIME =====
+  function calcHrs(start, end) {
+    if (!start || !end) return null;
+    const s = String(start).slice(0, 5);
+    const e = String(end).slice(0, 5);
+    const startD = new Date(`1970-01-01T${s}:00`);
+    const endD = new Date(`1970-01-01T${e}:00`);
+    if (isNaN(startD) || isNaN(endD) || endD <= startD) return null;
+    return ((endD - startD) / (1000 * 60 * 60)).toFixed(2);
+  }
+
+  container.innerHTML = shiftsToShow.map(shift => {
+    const morningHrs = calcHrs(shift.morning_in, shift.morning_out);
+    const afternoonHrs = calcHrs(shift.afternoon_in, shift.afternoon_out);
+    const overtimeHrs = calcHrs(shift.overtime_start, shift.overtime_end);
+
+    const morningDisplay = morningHrs
+      ? `${formatTime(shift.morning_in)} - ${formatTime(shift.morning_out)}<br><small>(${morningHrs} hrs)</small>`
+      : '—';
+
+    const afternoonDisplay = afternoonHrs
+      ? `${formatTime(shift.afternoon_in)} - ${formatTime(shift.afternoon_out)}<br><small>(${afternoonHrs} hrs)</small>`
+      : '—';
+
+    const overtimeDisplay = overtimeHrs
+      ? `${formatTime(shift.overtime_start)} - ${formatTime(shift.overtime_end)}<br><small>(${overtimeHrs} hrs)</small>`
+      : '—';
+
+    return `
+      <div class="shift-row">
+        <div class="shift-date">${new Date(shift.date + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+        <div class="time-range">${morningDisplay}</div>
+        <div class="time-range">${afternoonDisplay}</div>
+        <div class="time-range">${overtimeDisplay}</div>
+        <div class="total-hours"><strong>${(shift.total_hours || 0).toFixed(2)} hrs</strong></div>
+        <div class="shift-actions">
+          <button class="secondary-btn small-btn" onclick="editShift('${shift.id}')">Edit</button>
+          <button class="secondary-btn small-btn danger-btn" onclick="deleteShift('${shift.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function editShift(shiftId) {
+  const shift = allShifts.find(s => s.id === shiftId);
+  if (!shift) return;
+
+  editingShiftId = shiftId;
+
+  // ===== STRIP SECONDS FROM SUPABASE TIME FORMAT =====
+  document.getElementById('shift-date').value = shift.date || '';
+  document.getElementById('morning-in').value = String(shift.morning_in || '').slice(0, 5);
+  document.getElementById('morning-out').value = String(shift.morning_out || '').slice(0, 5);
+  document.getElementById('afternoon-in').value = String(shift.afternoon_in || '').slice(0, 5);
+  document.getElementById('afternoon-out').value = String(shift.afternoon_out || '').slice(0, 5);
+  document.getElementById('overtime-start').value = String(shift.overtime_start || '').slice(0, 5);
+  document.getElementById('overtime-end').value = String(shift.overtime_end || '').slice(0, 5);
+
+  // ===== WAIT FOR DOM THEN RECALCULATE =====
+  setTimeout(() => updateShiftDurations(), 100);
+
+  const saveBtn = document.getElementById('save-shift-btn');
+  if (saveBtn) saveBtn.textContent = 'Update Shift';
+
+  document.getElementById('shift-form')?.scrollIntoView({ behavior: 'smooth' });
+  showToast('Shift loaded — make your changes and click Update Shift');
+}
+
+async function deleteShift(shiftId) {
+  if (!confirm('Delete this shift record? This cannot be undone.')) return;
+
+  const { error } = await supabase
+    .from('shifts')
+    .delete()
+    .eq('id', shiftId);
+
+  if (error) {
+    showToast('Failed to delete shift: ' + error.message);
+    return;
+  }
+
+  showToast('Shift deleted');
+  await loadAllShifts();
+  updateDashboard();
+}
+
+// === DASHBOARD ===
+function updateDashboard() {
+  if (!currentUser) return;
+
+  const totalHours = allShifts.reduce((sum, shift) => sum + (shift.total_hours || 0), 0);
+  const requiredHours = currentUser.requiredHours || 200;
+  const remainingHours = Math.max(0, requiredHours - totalHours);
+  const percentage = requiredHours > 0
+    ? Math.min(Math.round((totalHours / requiredHours) * 100), 100)
+    : 0;
+  const uniqueDays = new Set(allShifts.map(s => s.date)).size;
+
+  const greetingEl = document.getElementById('greeting-msg');
+  const percentEl = document.getElementById('progress-percent');
+  const hoursRenderedEl = document.getElementById('hours-rendered');
+  const remainingEl = document.getElementById('hours-remaining');
+  const daysEl = document.getElementById('stat-total-days');
+  const totalHoursEl = document.getElementById('stat-total-hours');
+  const ringEl = document.getElementById('progress-circle-fill');
+  const estimateEl = document.getElementById('estimated-finish');
+
+  if (greetingEl) greetingEl.textContent = `Hello, ${getFirstName(currentUser.fullName)}`;
+  if (percentEl) percentEl.textContent = `${percentage}%`;
+  if (hoursRenderedEl) hoursRenderedEl.textContent = `${totalHours.toFixed(1)} / ${requiredHours} hrs`;
+  if (remainingEl) remainingEl.textContent = `${remainingHours.toFixed(0)}h`;
+  if (daysEl) daysEl.textContent = uniqueDays;
+  if (totalHoursEl) totalHoursEl.textContent = `${totalHours.toFixed(0)}h`;
+
+  if (ringEl) {
+    const offset = RING_CIRCUMFERENCE - (percentage / 100) * RING_CIRCUMFERENCE;
+    ringEl.style.strokeDashoffset = offset;
+  }
+
+  if (estimateEl) {
+    if (remainingHours <= 0) {
+      estimateEl.textContent = 'Target reached — great work!';
+    } else if (uniqueDays < 2 || totalHours <= 0) {
+      estimateEl.textContent = 'Log more shifts to see your estimated finish date.';
+    } else {
+      const avgDaily = totalHours / uniqueDays;
+      const daysLeft = Math.ceil(remainingHours / avgDaily);
+      const finishDate = new Date();
+      finishDate.setDate(finishDate.getDate() + daysLeft);
+      estimateEl.textContent = finishDate.toLocaleDateString([], {
+        month: 'short', day: 'numeric', year: 'numeric'
+      });
+    }
+  }
+
+  renderWeeklyChart();
+  renderShiftHistory();
+}
+
+// === WEEKLY CHART ===
+function renderWeeklyChart() {
+  const container = document.getElementById('weekly-hours-chart');
+  if (!container) return;
+
+  const today = new Date();
+  const dayIndex = (today.getDay() + 6) % 7;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayIndex);
+  monday.setHours(0, 0, 0, 0);
+
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    return {
+      label: date.toLocaleDateString([], { weekday: 'short' }),
+      dateStr: date.toISOString().split('T')[0],
+      hours: 0
+    };
+  });
+
+  allShifts.forEach(shift => {
+    const day = week.find(d => d.dateStr === shift.date);
+    if (day) day.hours += shift.total_hours || 0;
+  });
+
+  const maxHours = Math.max(...week.map(d => d.hours), 8);
+
+  container.innerHTML = week.map(day => `
+    <div class="chart-row">
+      <span class="chart-label">${day.label}</span>
+      <div class="chart-bar">
+        <div class="chart-fill" style="width:${maxHours > 0 ? Math.round((day.hours / maxHours) * 100) : 0}%"></div>
+      </div>
+      <span class="chart-value">${day.hours.toFixed(1)}h</span>
+    </div>
+  `).join('');
+}
+
+// === HISTORY PAGE ===
+function renderHistoryPage() {
+  const totalHours = allShifts.reduce((sum, s) => sum + (s.total_hours || 0), 0);
+  const uniqueDays = new Set(allShifts.map(s => s.date)).size;
+  const avgHours = uniqueDays ? totalHours / uniqueDays : 0;
+
+  const daysEl = document.getElementById('history-days');
+  const hoursEl = document.getElementById('history-hours');
+  const avgEl = document.getElementById('history-average');
+  const activeEl = document.getElementById('history-active');
+
+  if (daysEl) daysEl.textContent = uniqueDays;
+  if (hoursEl) hoursEl.textContent = `${totalHours.toFixed(1)}h`;
+  if (avgEl) avgEl.textContent = `${avgHours.toFixed(1)}h`;
+  if (activeEl) activeEl.textContent = '0';
+
+  const container = document.getElementById('all-sessions');
+  if (!container) return;
+
+  if (!allShifts.length) {
+    container.innerHTML = '<p class="empty-state">No shifts found.</p>';
+    return;
+  }
+
+  // Group by date
+  const groups = allShifts.reduce((acc, shift) => {
+    const dateKey = new Date(shift.date + 'T00:00:00').toLocaleDateString([], {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+    });
+    if (!acc[dateKey]) acc[dateKey] = [];
+    acc[dateKey].push(shift);
+    return acc;
+  }, {});
+
+  container.innerHTML = Object.entries(groups).map(([day, shifts]) => `
+    <section class="history-day">
+      <h2 class="history-day-title">${day}</h2>
+      ${shifts.map(shift => `
+        <div class="session-item">
+          <div class="session-icon">▣</div>
+          <div class="session-meta">
+            <strong>${shift.morning_in || '--'} - ${shift.morning_out || '--'}</strong>
+            ${shift.afternoon_in ? `<span>Afternoon: ${shift.afternoon_in} - ${shift.afternoon_out}</span>` : ''}
+            ${shift.overtime_start ? `<span>Overtime: ${shift.overtime_start} - ${shift.overtime_end}</span>` : ''}
+          </div>
+          <div class="session-duration">${(shift.total_hours || 0).toFixed(2)}h</div>
+        </div>
+      `).join('')}
+    </section>
+  `).join('');
+}
+
+// === SETTINGS PAGE ===
+function renderSettingsPage() {
+  if (!currentUser) return;
+  const nameInput = document.getElementById('settings-name-input');
+  const hoursInput = document.getElementById('required-hours');
+  if (nameInput) nameInput.value = currentUser.fullName || '';
+  if (hoursInput) hoursInput.value = currentUser.requiredHours || 200;
+}
+
+async function saveSettings() {
+  const saveBtn = document.getElementById('save-settings-btn');
+  setButtonLoading(saveBtn, true, 'Saving...');
+
+  const fullName = document.getElementById('settings-name-input')?.value.trim() || currentUser.fullName;
+  const requiredHours = parseInt(document.getElementById('required-hours')?.value, 10) || 200;
+
+  try {
+    const { error } = await supabase.from('profiles').upsert({
+      id: currentUser.id,
+      full_name: fullName,
+      email: currentUser.email,
+      required_hours: requiredHours
+    });
+
+    if (error) {
+      showToast('Error saving settings: ' + error.message);
+      return;
+    }
+
+    currentUser.fullName = fullName;
+    currentUser.requiredHours = requiredHours;
+    updateDashboard();
+    showToast('Settings saved');
+    navTo('dashboard');
+  } finally {
+    setButtonLoading(saveBtn, false);
+  }
+}
+
+// === DTR MODAL ===
+function openDTRModal() {
+  const modal = document.getElementById('dtr-modal');
+  if (modal) modal.style.display = 'grid';
+  const nameInput = document.getElementById('dtr-full-name');
+  if (nameInput && currentUser?.fullName) nameInput.value = currentUser.fullName;
+}
+
+function closeDTRModal() {
+  const modal = document.getElementById('dtr-modal');
+  if (modal) modal.style.display = 'none';
+  document.getElementById('dtr-form')?.reset();
+  toggleSignatureSection(false);
+}
+
+function toggleSignatureSection(show) {
+  const section = document.getElementById('signature-section');
+  if (!section) return;
+  if (show) {
+    section.style.display = 'grid';
+  } else {
+    section.style.display = 'none';
+  }
+}
+
+function validateDTRForm() {
+  const requiredFields = ['dtr-full-name', 'dtr-school', 'dtr-department', 'dtr-company', 'dtr-position'];
+  let valid = true;
+  requiredFields.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!el.value.trim()) {
+      el.style.borderColor = '#c0392b';
+      valid = false;
+    } else {
+      el.style.borderColor = '';
+    }
+  });
+  return valid;
+}
+
+function getDTRData() {
+  return {
+    fullName: document.getElementById('dtr-full-name')?.value.trim(),
+    school: document.getElementById('dtr-school')?.value.trim(),
+    department: document.getElementById('dtr-department')?.value.trim(),
+    company: document.getElementById('dtr-company')?.value.trim(),
+    position: document.getElementById('dtr-position')?.value.trim(),
+    includeSignature: document.getElementById('dtr-include-signature')?.checked,
+    supervisorName: document.getElementById('dtr-supervisor-name')?.value.trim(),
+    supervisorTitle: document.getElementById('dtr-supervisor-title')?.value.trim(),
+    shifts: allShifts
+  };
+}
+
+function exportDTR(type) {
+  if (!validateDTRForm()) {
+    showToast('Please fill in all required fields');
+    return;
+  }
+  const data = getDTRData();
+  if (type === 'print') generateDTRPrint(data);
+  else if (type === 'csv') generateDTRCSV(data);
+  else if (type === 'excel') generateDTRExcel(data);
+}
+
+// === PDF PRINT ===
+function generateDTRPrint(data) {
+  const printWindow = window.open('', '_blank');
+  const rows = data.shifts.map(shift => `
+    <tr>
+      <td>${new Date(shift.date + 'T00:00:00').toISOString().slice(0,10)}</td>
+      <td>
+        ${shift.morning_in && shift.morning_out ? `${shift.morning_in} - ${shift.morning_out}` : ''}
+        ${shift.afternoon_in && shift.afternoon_out ? `, ${shift.afternoon_in} - ${shift.afternoon_out}` : ''}
+        ${shift.overtime_start && shift.overtime_end ? `, ${shift.overtime_start} - ${shift.overtime_end} (OT)` : ''}
+      </td>
+      <td>${(shift.total_hours || 0).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const totalHours = data.shifts.reduce((sum, s) => sum + (s.total_hours || 0), 0);
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>DTR - ${data.fullName}</title>
+      <style>
+        body { font-family: serif; margin: 20px; color: #000; }
+        .doc-header { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 16px; }
+        h1 { text-align: center; font-size: 18px; margin: 0; }
+        .subtitle { text-align: center; font-size: 13px; margin-bottom: 20px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 20px; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #f0f0f0; padding: 8px; border: 1px solid #000; text-align: left; }
+        td { padding: 8px; border: 1px solid #000; }
+        .total-row td { font-weight: bold; text-align: right; }
+        .signature-block { margin-top: 40px; display: flex; gap: 40px; font-size: 13px; }
+        .sig-line { border-top: 1px solid #000; padding-top: 6px; margin-top: 30px; width: 220px; }
+        @media print { body { margin: 0; } }
+      </style>
+    </head>
+    <body>
+      <div class="doc-header">
+        <span>${new Date().toLocaleString()}</span>
+        <span>DTR - ${data.fullName}</span>
+      </div>
+      <h1>DAILY TIME RECORD</h1>
+      <p class="subtitle">On-the-Job Training</p>
+      <div class="info-grid">
+        <div><strong>Name:</strong> ${data.fullName}</div>
+        <div><strong>Company:</strong> ${data.company}</div>
+        <div><strong>School:</strong> ${data.school}</div>
+        <div><strong>Position:</strong> ${data.position}</div>
+        <div><strong>Department / Course:</strong> ${data.department}</div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Time In - Out</th><th>Hours</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr class="total-row">
+            <td colspan="2">Total Hours:</td>
+            <td>${totalHours.toFixed(2)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      ${data.includeSignature ? `
+        <div class="signature-block">
+          <div>
+            <p>Certified Correct:</p>
+            <div class="sig-line">${data.supervisorName}<br>${data.supervisorTitle}</div>
+          </div>
+          <div>
+            <p>&nbsp;</p>
+            <div class="sig-line">Intern Signature<br>Date: _______________</div>
+          </div>
+        </div>
+      ` : ''}
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.print();
+}
+
+// === CSV EXPORT ===
+function generateDTRCSV(data) {
+  const totalHours = data.shifts.reduce((sum, s) => sum + (s.total_hours || 0), 0);
+  const rows = [
+    ['DAILY TIME RECORD - OJT'],
+    ['Name:', data.fullName],
+    ['School:', data.school],
+    ['Department/Course:', data.department],
+    ['Company:', data.company],
+    ['Position:', data.position],
+    [''],
+    ['Date', 'Time In', 'Time Out', 'Hours'],
+    ...data.shifts.map(s => [
+      s.date,
+      s.morning_in || '',
+      s.morning_out || '',
+      (s.total_hours || 0).toFixed(2)
+    ]),
+    ['', '', '', ''],
+    ['Total Hours:', '', '', totalHours.toFixed(2)]
+  ];
+
+  const csv = rows.map(row =>
+    row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+  ).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `DTR_${data.fullName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  closeDTRModal();
+  showToast('DTR CSV exported');
+}
+
+// === EXCEL EXPORT ===
+function generateDTRExcel(data) {
+  const totalHours = data.shifts.reduce((sum, s) => sum + (s.total_hours || 0), 0);
+  const wsData = [
+    ['DAILY TIME RECORD - OJT'],
+    ['Name:', data.fullName],
+    ['School:', data.school],
+    ['Department/Course:', data.department],
+    ['Company:', data.company],
+    ['Position:', data.position],
+    [''],
+    ['Date', 'Time In', 'Time Out', 'Hours'],
+    ...data.shifts.map(s => [
+      s.date,
+      s.morning_in || '',
+      s.morning_out || '',
+      (s.total_hours || 0).toFixed(2)
+    ]),
+    ['', '', '', ''],
+    ['Total Hours:', '', '', totalHours.toFixed(2)]
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'DTR');
+  XLSX.writeFile(wb, `DTR_${data.fullName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  closeDTRModal();
+  showToast('DTR Excel exported');
+}
+
+// === EVENT LISTENERS ===
 function setupEventListeners() {
   document.getElementById('show-signup')?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -271,17 +826,13 @@ function setupEventListeners() {
     setButtonLoading(submitBtn, true, 'Signing in...');
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
-
     try {
       const result = await auth.login(email, password);
-
       if (!result.success) {
         setFormError('login-error', result.message || 'Login failed');
         return;
       }
-
       await loadUserData();
-      await resumeActiveSession();
       showAppUI();
       showToast('Logged in successfully');
     } finally {
@@ -298,21 +849,17 @@ function setupEventListeners() {
     const email = document.getElementById('signup-email').value.trim();
     const password = document.getElementById('signup-password').value;
     const confirmPassword = document.getElementById('signup-confirm').value;
-    const requiredHours = parseInt(document.getElementById('signup-required-hours').value, 10);
-
+    const requiredHours = parseInt(document.getElementById('signup-required-hours').value, 10) || 200;
     try {
       const result = await auth.signup(fullName, email, password, confirmPassword, requiredHours);
-
       if (!result.success) {
         setFormError('signup-error', result.message || 'Signup failed');
         return;
       }
-
       await loadUserData();
-      await resumeActiveSession();
       showAppUI();
       e.target.reset();
-      showToast('Account created');
+      showToast('Account created successfully');
     } finally {
       setButtonLoading(submitBtn, false);
     }
@@ -321,595 +868,37 @@ function setupEventListeners() {
   document.getElementById('dtr-include-signature')?.addEventListener('change', (e) => {
     toggleSignatureSection(e.target.checked);
   });
-}
 
-function exportHistory() {
-  const sessions = completedSessions();
-  if (!sessions.length) {
-    showToast('No session history to export');
-    return;
-  }
-
-  const headers = ['Date', 'Check-in Time', 'Check-out Time', 'Duration', 'Session Note'];
-  const rows = sessions.map(session => {
-    const start = new Date(session.startTime);
-    const end = session.endTime ? new Date(session.endTime) : null;
-    const date = start.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
-    const timeIn = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const timeOut = end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active';
-    return [date, timeIn, timeOut, formatDuration(session.duration), session.notes || ''];
+  document.getElementById('shift-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveShift();
   });
 
-  const csv = [headers, ...rows]
-    .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `ojeyt_history_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-  showToast('Session history exported');
-}
-
-// === DTR MODAL ===
-function openDTRModal() {
-  document.getElementById('dtr-modal').style.display = 'grid';
-  // Pre-fill with user data if available
-  const user = currentUser;
-  if (user) {
-    document.getElementById('dtr-full-name').value = user.fullName || '';
-  }
-}
-
-function closeDTRModal() {
-  document.getElementById('dtr-modal').style.display = 'none';
-  document.getElementById('dtr-form').reset();
-  toggleSignatureSection(false);
-}
-
-function toggleSignatureSection(show) {
-  const section = document.getElementById('signature-section');
-  if (show) {
-    section.style.display = 'grid';
-    section.classList.remove('hidden');
-  } else {
-    section.classList.add('hidden');
-    setTimeout(() => section.style.display = 'none', 300);
-  }
-}
-
-// === VALIDATION ===
-function validateDTRForm() {
-  const requiredFields = [
-    'dtr-full-name', 'dtr-school', 'dtr-department', 'dtr-company', 'dtr-position'
-  ];
-  let valid = true;
-  requiredFields.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el.value.trim()) {
-      el.style.borderColor = '#c0392b';
-      valid = false;
-    } else {
-      el.style.borderColor = '#e5eaf2';
-    }
+  ['morning-in', 'morning-out', 'afternoon-in', 'afternoon-out', 'overtime-start', 'overtime-end'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', updateShiftDurations);
   });
-  if (document.getElementById('dtr-include-signature').checked) {
-    const sigFields = ['dtr-supervisor-name', 'dtr-supervisor-title'];
-    sigFields.forEach(id => {
-      const el = document.getElementById(id);
-      if (!el.value.trim()) {
-        el.style.borderColor = '#c0392b';
-        valid = false;
-      } else {
-        el.style.borderColor = '#e5eaf2';
-      }
-    });
-  }
-  return valid;
+
+  document.getElementById('shift-filter-date')?.addEventListener('input', renderShiftHistory);
 }
 
-// === PDF PRINT ===
-function exportDTR(type) {
-  if (!validateDTRForm()) {
-    showToast('Please fill in all required fields');
-    return;
-  }
+// === INIT ===
+async function initializeApp() {
+  loadThemePreference();
+  setupEventListeners();
+  setDefaultShiftDate();
+  updateShiftDurations();
 
-  const data = getDTRData();
-  if (type === 'print') {
-    generateDTRPrint(data);
-  } else if (type === 'csv') {
-    generateDTRCSV(data);
-  } else if (type === 'excel') {
-    generateDTRExcel(data);
-  }
-}
+  await auth.init();
 
-function getDTRData() {
-  return {
-    fullName: document.getElementById('dtr-full-name').value.trim(),
-    school: document.getElementById('dtr-school').value.trim(),
-    department: document.getElementById('dtr-department').value.trim(),
-    company: document.getElementById('dtr-company').value.trim(),
-    position: document.getElementById('dtr-position').value.trim(),
-    includeSignature: document.getElementById('dtr-include-signature').checked,
-    supervisorName: document.getElementById('dtr-supervisor-name').value.trim(),
-    supervisorTitle: document.getElementById('dtr-supervisor-title').value.trim(),
-    sessions: completedSessions()
-  };
-}
-
-function generateDTRPrint(data) {
-  const printWindow = window.open('', '_blank');
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>DTR - ${data.fullName}</title>
-      <style>
-        body { font-family: serif; margin: 20px; }
-        .header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 20px; }
-        h1 { text-align: center; margin: 20px 0; }
-        .info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #000; padding: 8px; text-align: center; }
-        .total { font-weight: bold; }
-        .signature { margin-top: 40px; }
-        .signature div { display: inline-block; width: 45%; margin-right: 10%; vertical-align: top; }
-        @media print { body { margin: 0; } }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <span>${new Date().toLocaleString()}</span>
-        <span>DTR - ${data.fullName}</span>
-      </div>
-      <h1>DAILY TIME RECORD<br>On-the-Job Training</h1>
-      <div class="info">
-        <div>Name: ${data.fullName}</div>
-        <div>Company: ${data.company}</div>
-        <div>School: ${data.school}</div>
-        <div>Position: ${data.position}</div>
-        <div>Department / Course: ${data.department}</div>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Time In - Out</th>
-            <th>Hours</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.sessions.map(s => {
-            const start = new Date(s.startTime);
-            const end = new Date(s.endTime);
-            const date = start.toISOString().slice(0,10);
-            const timeIn = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            const timeOut = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            const hours = (s.duration / 3600).toFixed(2);
-            return `<tr><td>${date}</td><td>${timeIn} - ${timeOut}</td><td>${hours}</td></tr>`;
-          }).join('')}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="2" class="total">Total Hours:</td>
-            <td class="total">${data.sessions.reduce((sum, s) => sum + s.duration / 3600, 0).toFixed(2)}</td>
-          </tr>
-        </tfoot>
-      </table>
-      ${data.includeSignature ? `
-        <div class="signature">
-          <p>Certified Correct:</p>
-          <div>
-            _______________________________<br>
-            ${data.supervisorName}<br>
-            ${data.supervisorTitle}
-          </div>
-          <div>
-            _______________________________<br>
-            Intern Signature<br>
-            Date: _______________
-          </div>
-        </div>
-      ` : ''}
-    </body>
-    </html>
-  `;
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.print();
-}
-
-// === CSV EXPORT ===
-function generateDTRCSV(data) {
-  const rows = [
-    ['DAILY TIME RECORD - OJT'],
-    ['Name:', data.fullName],
-    ['School:', data.school],
-    ['Department/Course:', data.department],
-    ['Company:', data.company],
-    ['Position:', data.position],
-    [''],
-    ['Date', 'Time In', 'Time Out', 'Hours'],
-    ...data.sessions.map(s => {
-      const start = new Date(s.startTime);
-      const end = new Date(s.endTime);
-      const date = start.toISOString().slice(0,10);
-      const timeIn = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      const timeOut = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      const hours = (s.duration / 3600).toFixed(2);
-      return [date, timeIn, timeOut, hours];
-    }),
-    ['', '', '', ''],
-    ['Total Hours:', '', '', data.sessions.reduce((sum, s) => sum + s.duration / 3600, 0).toFixed(2)]
-  ];
-
-  const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `DTR_${data.fullName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-  closeDTRModal();
-  showToast('DTR CSV exported');
-}
-
-// === EXCEL EXPORT ===
-function generateDTRExcel(data) {
-  const wsData = [
-    ['DAILY TIME RECORD - OJT'],
-    ['Name:', data.fullName],
-    ['School:', data.school],
-    ['Department/Course:', data.department],
-    ['Company:', data.company],
-    ['Position:', data.position],
-    [''],
-    ['Date', 'Time In', 'Time Out', 'Hours'],
-    ...data.sessions.map(s => {
-      const start = new Date(s.startTime);
-      const end = new Date(s.endTime);
-      const date = start.toISOString().slice(0,10);
-      const timeIn = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      const timeOut = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      const hours = (s.duration / 3600).toFixed(2);
-      return [date, timeIn, timeOut, hours];
-    }),
-    ['', '', '', ''],
-    ['Total Hours:', '', '', data.sessions.reduce((sum, s) => sum + s.duration / 3600, 0).toFixed(2)]
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  // Apply bold
-  const boldCells = ['A1', 'A8', 'D' + (wsData.length)];
-  boldCells.forEach(cell => {
-    if (ws[cell]) ws[cell].s = { font: { bold: true } };
-  });
-  // Column widths
-  ws['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'DTR');
-  XLSX.writeFile(wb, `DTR_${data.fullName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
-  closeDTRModal();
-  showToast('DTR Excel exported');
-}
-
-function logout() {
-  auth.logout();
-  currentUser = null;
-  allSessions = [];
-  resetSessionUI();
-  showAuthUI('login');
-  showToast('Logged out');
-}
-
-async function saveSettings() {
-  const saveBtn = document.getElementById('save-settings-btn');
-  setButtonLoading(saveBtn, true, 'Saving...');
-  const fullName = document.getElementById('settings-name-input').value.trim() || currentUser.fullName;
-  const requiredHours = parseInt(document.getElementById('required-hours').value, 10) || 200;
-  const latitude = parseFloat(document.getElementById('office-lat').value);
-  const longitude = parseFloat(document.getElementById('office-lon').value);
-  const radius = parseInt(document.getElementById('office-radius').value, 10) || 100;
-  const autoCheckIn = document.getElementById('auto-checkin').checked;
-
-  try {
-    const result = await API.updateSettings(auth.getToken(), {
-      fullName,
-      requiredHours,
-      officeLocation: {
-        latitude: Number.isFinite(latitude) ? latitude : 14.5995,
-        longitude: Number.isFinite(longitude) ? longitude : 120.9842,
-        radius,
-      },
-      autoCheckIn,
-    });
-
-    if (!result.success) {
-      showToast(result.message || 'Error saving settings');
+  if (auth.isAuthenticated) {
+    await loadUserData();
+    if (currentUser) {
+      showAppUI();
       return;
     }
-
-    currentUser = result.user;
-    auth.setUser(result.user);
-    updateDashboard();
-    showToast('Settings saved');
-    navTo('dashboard');
-  } finally {
-    setButtonLoading(saveBtn, false);
-  }
-}
-
-function toggleSession() {
-  if (Timer.isRunning()) {
-    checkOut();
-  } else {
-    getLocationForCheckin();
-  }
-}
-
-function getLocationForCheckin() {
-  if (!navigator.geolocation) {
-    checkIn(0, 0);
-    return;
   }
 
-  navigator.geolocation.getCurrentPosition(
-    position => checkIn(position.coords.latitude, position.coords.longitude),
-    () => checkIn(0, 0),
-    { enableHighAccuracy: true, timeout: 8000 }
-  );
-}
-
-async function checkIn(latitude, longitude) {
-  const mainBtn = document.getElementById('main-btn');
-  let result = null;
-  setButtonLoading(mainBtn, true, '...');
-  try {
-    result = await API.checkIn(auth.getToken(), latitude, longitude);
-  } finally {
-    setButtonLoading(mainBtn, false);
-  }
-
-  if (!result?.success) {
-    showToast(result?.message || 'Check-in failed');
-    return;
-  }
-
-  startTimer(result.session.startTime);
-  showToast(result.message || 'Checked in');
-}
-
-function checkOut() {
-  if (!navigator.geolocation) {
-    completeCheckout(0, 0);
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    position => completeCheckout(position.coords.latitude, position.coords.longitude),
-    () => completeCheckout(0, 0),
-    { enableHighAccuracy: true, timeout: 8000 }
-  );
-}
-
-async function completeCheckout(latitude, longitude) {
-  const mainBtn = document.getElementById('main-btn');
-  const note = document.getElementById('session-note')?.value.trim() || undefined;
-  let result = null;
-  setButtonLoading(mainBtn, true, '...');
-  try {
-    result = await API.checkOut(auth.getToken(), latitude, longitude, note);
-  } finally {
-    setButtonLoading(mainBtn, false);
-  }
-
-  if (!result?.success) {
-    showToast(result?.message || 'Check-out failed');
-    return;
-  }
-
-  resetSessionUI();
-  await loadAllSessions();
-  updateDashboard();
-  if (currentPage === 'history') renderHistoryPage();
-  showToast('Checked out successfully');
-}
-
-async function resumeActiveSession() {
-  const result = await API.getCurrentSession(auth.getToken());
-  if (!result.success || !result.session) {
-    resetSessionUI();
-    return;
-  }
-  startTimer(result.session.startTime);
-}
-
-function startTimer(startTime) {
-  Timer.start(startTime, formatted => {
-    document.getElementById('timer-display').textContent = formatted;
-  });
-  document.getElementById('status-badge').textContent = 'Session in progress';
-  document.getElementById('btn-label').textContent = 'Check Out';
-  document.getElementById('main-btn').classList.add('is-active');
-  document.getElementById('main-btn').setAttribute('aria-label', 'Check out');
-  const icon = document.querySelector('#main-btn .btn-icon');
-  if (icon) icon.textContent = '⇥';
-  updateTimerControlState();
-}
-
-function renderBackendStatus() {
-  const card = document.getElementById('backend-status-card');
-  const title = document.getElementById('backend-status-title');
-  const detail = document.getElementById('backend-status-detail');
-  if (!card || !title || !detail) return;
-
-  const connected = API.isSupabaseConfigured();
-  card.classList.toggle('is-connected', connected);
-  card.classList.toggle('is-fallback', !connected);
-  title.textContent = connected ? 'Supabase connected' : 'Local fallback active';
-  detail.textContent = connected
-    ? 'The app is sending auth, profile, and session data to your Supabase project.'
-    : 'Supabase URL/key are not set yet, so the app is using the local Express fallback.';
-}
-
-function updateDashboard() {
-  if (!currentUser) return;
-
-  const sessions = completedSessions();
-  const totalSeconds = sessions.reduce((sum, session) => sum + (session.duration || 0), 0);
-  const totalHours = totalSeconds / 3600;
-  const requiredHours = currentUser.requiredHours || 200;
-  const remainingHours = Math.max(0, requiredHours - totalHours);
-  const percentage = requiredHours > 0 ? Math.min(Math.round((totalHours / requiredHours) * 100), 100) : 0;
-  const uniqueDays = new Set(sessions.map(session => new Date(session.startTime).toDateString())).size;
-
-  document.getElementById('greeting-msg').textContent = `Hello, ${getFirstName(currentUser.fullName)}`;
-  document.getElementById('progress-percent').textContent = `${percentage}%`;
-  document.getElementById('hours-rendered').textContent = `${totalHours.toFixed(1)} / ${requiredHours} hrs`;
-  document.getElementById('hours-remaining').textContent = `${remainingHours.toFixed(0)}h`;
-  document.getElementById('stat-total-days').textContent = uniqueDays;
-  document.getElementById('stat-total-hours').textContent = `${totalHours.toFixed(0)}h`;
-
-  const offset = RING_CIRCUMFERENCE - (percentage / 100) * RING_CIRCUMFERENCE;
-  document.getElementById('progress-circle-fill').style.strokeDashoffset = offset;
-
-  const estimateText = () => {
-    if (remainingHours <= 0) return 'Target reached — great work!';
-    if (uniqueDays < 2 || totalHours <= 0) return 'Log more sessions to see your estimated finish date.';
-    const averageDaily = totalHours / uniqueDays;
-    if (averageDaily <= 0) return 'Log more sessions to see your estimated finish date.';
-    const daysLeft = Math.ceil(remainingHours / averageDaily);
-    const finishDate = new Date();
-    finishDate.setDate(finishDate.getDate() + daysLeft);
-    return finishDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  document.getElementById('estimated-finish').textContent = estimateText();
-  renderWeeklyChart();
-  renderRecentSessions();
-}
-
-function renderWeeklyChart() {
-  const container = document.getElementById('weekly-hours-chart');
-  const week = [];
-  const today = new Date();
-  const dayIndex = (today.getDay() + 6) % 7;
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - dayIndex);
-  monday.setHours(0, 0, 0, 0);
-
-  for (let i = 0; i < 7; i += 1) {
-    const date = new Date(monday);
-    date.setDate(monday.getDate() + i);
-    week.push({
-      label: date.toLocaleDateString([], { weekday: 'short' }),
-      date,
-      seconds: 0,
-    });
-  }
-
-  completedSessions().forEach(session => {
-    const start = new Date(session.startTime);
-    week.forEach(day => {
-      if (start.toDateString() === day.date.toDateString()) {
-        day.seconds += session.duration || 0;
-      }
-    });
-  });
-
-  const maxSeconds = Math.max(...week.map(day => day.seconds), 3600);
-  container.innerHTML = week.map(day => {
-    const hours = (day.seconds / 3600).toFixed(1);
-    const width = maxSeconds > 0 ? Math.round((day.seconds / maxSeconds) * 100) : 0;
-    return `
-      <div class="chart-row">
-        <span class="chart-label">${day.label}</span>
-        <div class="chart-bar">
-          <div class="chart-fill" style="width:${width}%"></div>
-        </div>
-        <span class="chart-value">${hours}h</span>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderRecentSessions() {
-  const container = document.getElementById('recent-sessions');
-  const sessions = completedSessions().slice(0, 3);
-
-  if (!sessions.length) {
-    container.innerHTML = '<p class="empty-state">No sessions yet. Check in to start tracking.</p>';
-    return;
-  }
-
-  container.innerHTML = sessions.map(renderSessionItem).join('');
-}
-
-function renderSessionItem(session) {
-  const start = new Date(session.startTime);
-  const dateText = start.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-  return `
-    <div class="session-item">
-      <div class="session-icon">▣</div>
-      <div class="session-meta">
-        <strong>${dateText}</strong>
-        <span>${formatTimeRange(session)}</span>
-        ${session.notes ? `<span class="session-note">${session.notes}</span>` : ''}
-      </div>
-      <div class="session-duration">${formatDuration(session.duration)}</div>
-    </div>
-  `;
-}
-
-function renderHistoryPage() {
-  const sessions = completedSessions();
-  const totalSeconds = sessions.reduce((sum, session) => sum + (session.duration || 0), 0);
-  const uniqueDays = new Set(sessions.map(session => new Date(session.startTime).toDateString())).size;
-  const averageHours = uniqueDays ? (totalSeconds / 3600 / uniqueDays) : 0;
-  const activeCount = allSessions.filter(session => session.isActive).length;
-
-  document.getElementById('history-days').textContent = uniqueDays;
-  document.getElementById('history-hours').textContent = `${(totalSeconds / 3600).toFixed(0)}h`;
-  document.getElementById('history-average').textContent = `${averageHours.toFixed(1)}h`;
-  document.getElementById('history-active').textContent = activeCount;
-
-  const container = document.getElementById('all-sessions');
-  if (!sessions.length) {
-    container.innerHTML = '<p class="empty-state">No sessions found.</p>';
-    return;
-  }
-
-  const groups = groupedSessions(sessions);
-  container.innerHTML = Object.entries(groups).map(([day, daySessions]) => `
-    <section class="history-day">
-      <h2 class="history-day-title">${day}</h2>
-      ${daySessions.map(renderSessionItem).join('')}
-    </section>
-  `).join('');
-}
-
-function renderSettingsPage() {
-  if (!currentUser) return;
-  const office = currentUser.officeLocation || {};
-
-  // Backend status UI removed - Supabase details hidden from user view
-  document.getElementById('settings-name-input').value = currentUser.fullName || '';
-  document.getElementById('required-hours').value = currentUser.requiredHours || 200;
-  document.getElementById('office-lat').value = office.latitude ?? 14.5995;
-  document.getElementById('office-lon').value = office.longitude ?? 120.9842;
-  document.getElementById('office-radius').value = office.radius ?? 100;
-  document.getElementById('auto-checkin').checked = !!currentUser.autoCheckIn;
+  showAuthUI('login');
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);

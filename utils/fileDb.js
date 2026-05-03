@@ -7,7 +7,7 @@ const DATA_DIR = path.join(__dirname, '..', 'data');
 const DB_PATH = path.join(DATA_DIR, 'db.json');
 
 function defaultDb() {
-  return { users: [], sessions: [] };
+  return { users: [], sessions: [], shifts: [] };
 }
 
 function readDb() {
@@ -132,9 +132,8 @@ function updateSession(id, patch) {
 }
 
 function getProgress(userId, requiredHours) {
-  const sessions = getUserSessions(userId).filter(session => !session.isActive);
-  const totalSecs = sessions.reduce((acc, session) => acc + (session.duration || 0), 0);
-  const totalHours = totalSecs / 3600;
+  const shifts = getShifts(userId);
+  const totalHours = shifts.reduce((acc, shift) => acc + (shift.total_hours || 0), 0);
   const percentage = requiredHours > 0 ? Math.round((totalHours / requiredHours) * 100) : 0;
   return {
     totalHours: parseFloat(totalHours.toFixed(2)),
@@ -143,14 +142,44 @@ function getProgress(userId, requiredHours) {
   };
 }
 
+function getShifts(userId) {
+  const db = readDb();
+  return db.shifts
+    .filter(shift => shift.userId === userId)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+function createShift(shiftData) {
+  const db = readDb();
+  const shift = {
+    id: crypto.randomUUID(),
+    ...shiftData,
+  };
+  db.shifts.push(shift);
+  writeDb(db);
+  return shift;
+}
+
+function deleteShift(userId, shiftId) {
+  const db = readDb();
+  const index = db.shifts.findIndex(shift => shift.userId === userId && shift.id === shiftId);
+  if (index === -1) return false;
+  db.shifts.splice(index, 1);
+  writeDb(db);
+  return true;
+}
+
 module.exports = {
   calculateSessionDuration,
   createSession,
+  createShift,
   createUser,
+  deleteShift,
   findUserByEmail,
   findUserById,
   getActiveSession,
   getProgress,
+  getShifts,
   getUserSessions,
   updateSession,
   updateUser,
