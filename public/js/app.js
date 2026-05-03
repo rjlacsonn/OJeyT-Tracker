@@ -8,29 +8,15 @@ let currentPage = 'login';
 let editingShiftId = null;
 
 const RING_CIRCUMFERENCE = 364.42;
-const THEME_KEY = 'ojeyt-theme';
-let currentTheme = 'light';
-
-// === THEME ===
-function applyTheme(theme) {
-  currentTheme = theme === 'dark' ? 'dark' : 'light';
-  document.documentElement.dataset.theme = currentTheme;
-  localStorage.setItem(THEME_KEY, currentTheme);
-  const toggleBtn = document.getElementById('theme-toggle-btn');
-  if (toggleBtn) toggleBtn.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
-}
-
-function loadThemePreference() {
-  const savedTheme = localStorage.getItem(THEME_KEY);
-  applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
-}
-
-function toggleTheme() {
-  applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
-}
 
 // === NAVIGATION ===
 function navTo(page) {
+  // === CONFIRM BEFORE LEAVING IF FORM IS DIRTY ===
+  if (shiftFormDirty && currentPage === 'dashboard' && page !== 'dashboard') {
+    confirmLeave(() => navTo(page));
+    return;
+  }
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const targetPage = document.getElementById(`page-${page}`);
   if (targetPage) targetPage.classList.add('active');
@@ -57,11 +43,6 @@ function showToast(message) {
   toast.textContent = message;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3200);
-}
-
-// === AUTH UI HELPERS ===
-function showAuthHelp() {
-  showToast('Create an account with your email and password. Confirm your email before signing in if required.');
 }
 
 function setFormError(id, message = '') {
@@ -113,6 +94,18 @@ function showAppUI() {
   document.getElementById('main-content-container').style.display = '';
   const emailEl = document.getElementById('user-email-short');
   if (emailEl) emailEl.textContent = truncateEmail(currentUser?.email || '');
+
+  // ===== SET AVATAR INITIALS =====
+  const avatarEl = document.getElementById('user-avatar');
+  if (avatarEl) {
+    const name = currentUser?.fullName || currentUser?.email || 'U';
+    const initials = name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
+    avatarEl.textContent = initials.toUpperCase();
+  }
+
+  // ===== SHOW PROGRESS BAR =====
+  const barWrap = document.getElementById('ojt-progress-bar-wrap');
+  if (barWrap) barWrap.style.display = '';
   navTo('dashboard');
 }
 
@@ -121,6 +114,13 @@ async function logout() {
   await auth.logout();
   currentUser = null;
   allShifts = [];
+
+  // ===== HIDE PROGRESS BAR ON LOGOUT =====
+  const barWrap = document.getElementById('ojt-progress-bar-wrap');
+  if (barWrap) barWrap.style.display = 'none';
+  const barFill = document.getElementById('ojt-progress-bar-fill');
+  if (barFill) barFill.style.width = '0%';
+
   showAuthUI('login');
   showToast('Logged out');
 }
@@ -220,6 +220,15 @@ async function saveShift() {
     return;
   }
 
+  // === DUPLICATE PROTECTION ===
+  if (!editingShiftId) {
+    const duplicate = allShifts.find(s => s.date === date);
+    if (duplicate) {
+      showToast(`❌ A shift already exists for ${new Date(date + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}. Edit the existing shift instead.`);
+      return;
+    }
+  }
+
   const afternoonIn = String(document.getElementById('afternoon-in')?.value || '').slice(0, 5) || null;
   const afternoonOut = String(document.getElementById('afternoon-out')?.value || '').slice(0, 5) || null;
   const overtimeStart = String(document.getElementById('overtime-start')?.value || '').slice(0, 5) || null;
@@ -238,14 +247,13 @@ async function saveShift() {
     afternoon_out: afternoonOut || null,
     overtime_start: overtimeStart || null,
     overtime_end: overtimeEnd || null,
-    total_hours: totalHours
+    total_hours: totalHours,
+    notes: document.getElementById('shift-notes')?.value.trim() || null
   };
 
   let saveError;
 
   if (editingShiftId) {
-    console.log('=== UPDATING shift:', editingShiftId, shiftPayload);
-
     const { data, error } = await supabase
       .from('shifts')
       .update(shiftPayload)
@@ -253,19 +261,16 @@ async function saveShift() {
       .eq('user_id', currentUser.id)
       .select();
 
-    console.log('=== UPDATE result data:', data, 'error:', error);
     saveError = error;
     editingShiftId = null;
 
   } else {
-    console.log('=== INSERTING new shift:', shiftPayload);
 
     const { data, error } = await supabase
       .from('shifts')
       .insert({ ...shiftPayload, user_id: currentUser.id })
       .select();
 
-    console.log('=== INSERT result data:', data, 'error:', error);
     saveError = error;
   }
 
@@ -277,14 +282,75 @@ async function saveShift() {
 
   showToast(`✅ Shift saved — ${totalHours.toFixed(2)} hrs logged`);
   document.getElementById('shift-form')?.reset();
+  markFormClean();
 
   const saveBtn = document.getElementById('save-shift-btn');
   if (saveBtn) saveBtn.textContent = 'Save Shift';
 
   setDefaultShiftDate();
   updateShiftDurations();
+
+  // ===== LOAD SHIFTS THEN REFRESH DASHBOARD =====
   await loadAllShifts();
   updateDashboard();
+}
+
+// === CALCULATE ESTIMATED FINISH DATE ===
+// Always uses the EARLIEST shift date as the start, and the hours
+// logged on that earliest day as the daily rate. Recalculates any
+// time shifts change, so editing/adding an earlier date updates it.
+function calculateEstimatedFinish() {
+  if (!currentUser || !allShifts.length) return null;
+
+  // ===== FIND THE EARLIEST SHIFT DATE ACROSS ALL LOGGED SHIFTS =====
+  const firstShiftDateStr = allShifts.reduce((earliest, shift) =>
+    shift.date < earliest ? shift.date : earliest,
+    allShifts[0].date
+  );
+
+  // ===== USE THE HOURS LOGGED ON THAT EARLIEST DAY AS DAILY RATE =====
+  const firstShift = allShifts.find(s => s.date === firstShiftDateStr);
+  const firstDayHours = firstShift?.total_hours || 8;
+
+  const requiredHours = currentUser.requiredHours || 200;
+  const workdaysNeeded = Math.ceil(requiredHours / firstDayHours);
+
+  // ===== PH PUBLIC HOLIDAYS =====
+  const allHolidays = new Set([
+    // 2026 Regular Holidays
+    '2026-01-01', '2026-04-02', '2026-04-03', '2026-04-04', '2026-04-09',
+    '2026-05-01', '2026-05-28', '2026-06-12', '2026-08-31', '2026-11-30',
+    '2026-12-25', '2026-12-30',
+    // 2026 Special Non-Working Days
+    '2026-02-17', '2026-03-20', '2026-08-21', '2026-11-01', '2026-11-02',
+    '2026-12-08', '2026-12-24', '2026-12-31',
+    // 2027 Regular Holidays
+    '2027-01-01', '2027-03-25', '2027-03-26', '2027-03-27', '2027-04-09',
+    '2027-05-01', '2027-05-17', '2027-06-12', '2027-08-30', '2027-11-29',
+    '2027-12-25', '2027-12-30',
+    // 2027 Special Non-Working Days
+    '2027-03-09', '2027-08-21', '2027-11-01', '2027-11-02',
+    '2027-12-08', '2027-12-24', '2027-12-31',
+  ]);
+
+  // ===== COUNT WORKDAYS FORWARD FROM THE EARLIEST SHIFT DATE =====
+  const finishDate = new Date(firstShiftDateStr + 'T00:00:00');
+  finishDate.setHours(0, 0, 0, 0);
+  let daysAdded = 0;
+
+  while (daysAdded < workdaysNeeded) {
+    finishDate.setDate(finishDate.getDate() + 1);
+    const dow = finishDate.getDay();
+    const y = finishDate.getFullYear();
+    const m = String(finishDate.getMonth() + 1).padStart(2, '0');
+    const d = String(finishDate.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+    if (dow !== 0 && dow !== 6 && !allHolidays.has(dateStr)) {
+      daysAdded++;
+    }
+  }
+
+  return finishDate;
 }
 
 // === SHIFT HISTORY TABLE ===
@@ -352,6 +418,7 @@ function renderShiftHistory() {
         <div class="time-range">${afternoonDisplay}</div>
         <div class="time-range">${overtimeDisplay}</div>
         <div class="total-hours"><strong>${(shift.total_hours || 0).toFixed(2)} hrs</strong></div>
+        ${shift.notes ? `<div class="shift-note-display">📝 ${shift.notes}</div>` : ''}
         <div class="shift-actions">
           <button class="secondary-btn small-btn" onclick="editShift('${shift.id}')">Edit</button>
           <button class="secondary-btn small-btn danger-btn" onclick="deleteShift('${shift.id}')">Delete</button>
@@ -375,6 +442,8 @@ async function editShift(shiftId) {
   document.getElementById('afternoon-out').value = String(shift.afternoon_out || '').slice(0, 5);
   document.getElementById('overtime-start').value = String(shift.overtime_start || '').slice(0, 5);
   document.getElementById('overtime-end').value = String(shift.overtime_end || '').slice(0, 5);
+  document.getElementById('shift-notes').value = shift.notes || '';
+  
 
   // ===== WAIT FOR DOM THEN RECALCULATE =====
   setTimeout(() => updateShiftDurations(), 100);
@@ -402,6 +471,91 @@ async function deleteShift(shiftId) {
   showToast('Shift deleted');
   await loadAllShifts();
   updateDashboard();
+}
+
+// === DAILY AVERAGE VS TARGET INDICATOR ===
+function updateAvgTargetIndicator(totalHours, uniqueDays, requiredHours) {
+  const row = document.getElementById('avg-target-row');
+  if (!row) return;
+
+  if (uniqueDays < 1 || totalHours <= 0) {
+    row.style.display = 'none';
+    return;
+  }
+
+  row.style.display = '';
+
+  const avgDaily = totalHours / uniqueDays;
+
+  // ===== CALCULATE TARGET DAILY HOURS NEEDED =====
+  // Based on remaining hours and remaining workdays from today
+  const now = new Date();
+  const allHolidays = new Set([
+    '2026-01-01', '2026-04-02', '2026-04-03', '2026-04-04', '2026-04-09',
+    '2026-05-01', '2026-05-28', '2026-06-12', '2026-08-31', '2026-11-30',
+    '2026-12-25', '2026-12-30', '2026-02-17', '2026-03-20', '2026-08-21',
+    '2026-11-01', '2026-11-02', '2026-12-08', '2026-12-24', '2026-12-31',
+    '2027-01-01', '2027-03-25', '2027-03-26', '2027-03-27', '2027-04-09',
+    '2027-05-01', '2027-05-17', '2027-06-12', '2027-08-30', '2027-11-29',
+    '2027-12-25', '2027-12-30', '2027-03-09', '2027-08-21', '2027-11-01',
+    '2027-11-02', '2027-12-08', '2027-12-24', '2027-12-31',
+  ]);
+
+  // ===== COUNT REMAINING WORKDAYS FROM TODAY =====
+  const finishDate = calculateEstimatedFinish();
+  let remainingWorkdays = 0;
+  if (finishDate) {
+    let cursor = new Date(now);
+    cursor.setHours(0, 0, 0, 0);
+    while (cursor <= finishDate) {
+      cursor.setDate(cursor.getDate() + 1);
+      const dow = cursor.getDay();
+      const y = cursor.getFullYear();
+      const m = String(cursor.getMonth() + 1).padStart(2, '0');
+      const d = String(cursor.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
+      if (dow !== 0 && dow !== 6 && !allHolidays.has(dateStr)) {
+        remainingWorkdays++;
+      }
+    }
+  }
+
+  const remainingHours = Math.max(0, requiredHours - totalHours);
+  const targetDaily = remainingWorkdays > 0
+    ? remainingHours / remainingWorkdays
+    : avgDaily;
+
+  // ===== UPDATE LABELS =====
+  const avgDisplay = document.getElementById('avg-daily-display');
+  const targetDisplay = document.getElementById('target-daily-display');
+  const fill = document.getElementById('avg-target-fill');
+  const marker = document.getElementById('avg-target-marker');
+  const status = document.getElementById('avg-target-status');
+
+  if (avgDisplay) avgDisplay.textContent = `${avgDaily.toFixed(1)}h`;
+  if (targetDisplay) targetDisplay.textContent = `${targetDaily.toFixed(1)}h`;
+
+  // ===== CALCULATE BAR WIDTH =====
+  const maxVal = Math.max(avgDaily, targetDaily, 8);
+  const avgPct = Math.min((avgDaily / maxVal) * 100, 100);
+  const targetPct = Math.min((targetDaily / maxVal) * 100, 100);
+
+  if (fill) fill.style.width = `${avgPct}%`;
+  if (marker) marker.style.left = `${targetPct}%`;
+
+  // ===== STATUS MESSAGE =====
+  if (status) {
+    if (avgDaily >= targetDaily) {
+      fill.style.background = 'var(--teal)';
+      status.textContent = `✅ On track — you're averaging ${avgDaily.toFixed(1)}h/day`;
+      status.className = 'avg-target-status status-good';
+    } else {
+      const diff = (targetDaily - avgDaily).toFixed(1);
+      fill.style.background = '#f59e0b';
+      status.textContent = `⚠️ Need ${diff}h more per day to finish on time`;
+      status.className = 'avg-target-status status-warn';
+    }
+  }
 }
 
 // === DASHBOARD ===
@@ -437,24 +591,130 @@ function updateDashboard() {
     ringEl.style.strokeDashoffset = offset;
   }
 
+  // ===== UPDATE TOP PROGRESS BAR =====
+  const barFill = document.getElementById('ojt-progress-bar-fill');
+  if (barFill) barFill.style.width = `${percentage}%`;
+
+  // ===== ESTIMATED FINISH — ALWAYS BASED ON EARLIEST SHIFT DATE =====
   if (estimateEl) {
     if (remainingHours <= 0) {
       estimateEl.textContent = 'Target reached — great work!';
-    } else if (uniqueDays < 2 || totalHours <= 0) {
-      estimateEl.textContent = 'Log more shifts to see your estimated finish date.';
+    } else if (!allShifts.length) {
+      estimateEl.textContent = 'Log your first shift to see your estimated finish date.';
     } else {
-      const avgDaily = totalHours / uniqueDays;
-      const daysLeft = Math.ceil(remainingHours / avgDaily);
-      const finishDate = new Date();
-      finishDate.setDate(finishDate.getDate() + daysLeft);
-      estimateEl.textContent = finishDate.toLocaleDateString([], {
-        month: 'short', day: 'numeric', year: 'numeric'
-      });
+      const finishDate = calculateEstimatedFinish();
+      if (finishDate) {
+        estimateEl.textContent = finishDate.toLocaleDateString([], {
+          month: 'short', day: 'numeric', year: 'numeric'
+        });
+      }
     }
   }
 
-  renderWeeklyChart();
+  // === UPDATE STREAK === / === DAILY AVG VS TARGET ===
+  updateAvgTargetIndicator(totalHours, uniqueDays, requiredHours);
+  const streak = calculateStreak();
+  const streakEl = document.getElementById('streak-count');
+  const streakBestEl = document.getElementById('streak-best');
+  if (streakEl) streakEl.textContent = streak.current;
+  if (streakBestEl) streakBestEl.textContent = streak.best;
+
+  // ===== REFRESH WHICHEVER CHART IS ACTIVE =====
+  const monthlyVisible = document.getElementById('monthly-hours-chart')?.style.display !== 'none';
+  if (monthlyVisible) {
+    renderMonthlyChart();
+  } else {
+    renderWeeklyChart();
+  }
   renderShiftHistory();
+}
+
+// === STREAK COUNTER ===
+function calculateStreak() {
+  if (!allShifts.length) return { current: 0, best: 0 };
+
+  // ===== GET ALL UNIQUE SHIFT DATES SORTED DESCENDING =====
+  const sortedDates = [...new Set(allShifts.map(s => s.date))]
+    .sort((a, b) => b.localeCompare(a));
+
+  // ===== GET TODAY AND YESTERDAY AS STRINGS =====
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
+
+  // ===== CURRENT STREAK =====
+  let current = 0;
+  let checkDate = new Date(sortedDates[0] + 'T00:00:00');
+  const mostRecent = sortedDates[0];
+
+  // ===== STREAK ONLY COUNTS IF LAST SHIFT WAS TODAY OR YESTERDAY =====
+  if (mostRecent !== todayStr && mostRecent !== yesterdayStr) {
+    current = 0;
+  } else {
+    for (let i = 0; i < sortedDates.length; i++) {
+      const expected = new Date(checkDate);
+      expected.setDate(checkDate.getDate() - i);
+      const expectedStr = `${expected.getFullYear()}-${String(expected.getMonth()+1).padStart(2,'0')}-${String(expected.getDate()).padStart(2,'0')}`;
+
+      // ===== SKIP WEEKENDS IN STREAK =====
+      if (expected.getDay() === 0 || expected.getDay() === 6) {
+        checkDate.setDate(checkDate.getDate() - 1);
+        continue;
+      }
+
+      if (sortedDates.includes(expectedStr)) {
+        current++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  // ===== BEST STREAK =====
+  let best = 0;
+  let tempStreak = 1;
+  const ascDates = [...sortedDates].sort((a, b) => a.localeCompare(b));
+
+  for (let i = 1; i < ascDates.length; i++) {
+    const prev = new Date(ascDates[i - 1] + 'T00:00:00');
+    const curr = new Date(ascDates[i] + 'T00:00:00');
+    const diffDays = (curr - prev) / (1000 * 60 * 60 * 24);
+
+    // ===== ALLOW 1 DAY GAP FOR WEEKENDS =====
+    if (diffDays === 1 || (diffDays === 3 && prev.getDay() === 5)) {
+      tempStreak++;
+    } else {
+      best = Math.max(best, tempStreak);
+      tempStreak = 1;
+    }
+  }
+  best = Math.max(best, tempStreak);
+
+  return { current, best };
+}
+
+// === CHART TOGGLE ===
+function switchChart(type) {
+  const weeklyChart = document.getElementById('weekly-hours-chart');
+  const monthlyChart = document.getElementById('monthly-hours-chart');
+  const weeklyBtn = document.getElementById('btn-weekly-chart');
+  const monthlyBtn = document.getElementById('btn-monthly-chart');
+
+  if (type === 'weekly') {
+    weeklyChart.style.display = '';
+    monthlyChart.style.display = 'none';
+    weeklyBtn.classList.add('active');
+    monthlyBtn.classList.remove('active');
+    renderWeeklyChart();
+  } else {
+    weeklyChart.style.display = 'none';
+    monthlyChart.style.display = '';
+    weeklyBtn.classList.remove('active');
+    monthlyBtn.classList.add('active');
+    renderMonthlyChart();
+  }
 }
 
 // === WEEKLY CHART ===
@@ -471,29 +731,168 @@ function renderWeeklyChart() {
   const week = Array.from({ length: 7 }, (_, i) => {
     const date = new Date(monday);
     date.setDate(monday.getDate() + i);
+    // ===== USE LOCAL DATE STRING TO AVOID TIMEZONE ISSUES =====
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
     return {
       label: date.toLocaleDateString([], { weekday: 'short' }),
-      dateStr: date.toISOString().split('T')[0],
+      dateStr: `${y}-${m}-${d}`,
       hours: 0
     };
   });
 
   allShifts.forEach(shift => {
-    const day = week.find(d => d.dateStr === shift.date);
-    if (day) day.hours += shift.total_hours || 0;
+    const shiftDate = String(shift.date).slice(0, 10);
+    const day = week.find(d => d.dateStr === shiftDate);
+    if (day) day.hours += parseFloat(shift.total_hours) || 0;
   });
 
-  const maxHours = Math.max(...week.map(d => d.hours), 8);
+  const maxHours = Math.max(...week.map(d => d.hours), 1);
 
   container.innerHTML = week.map(day => `
     <div class="chart-row">
       <span class="chart-label">${day.label}</span>
       <div class="chart-bar">
-        <div class="chart-fill" style="width:${maxHours > 0 ? Math.round((day.hours / maxHours) * 100) : 0}%"></div>
+        <div class="chart-fill" style="width:${Math.round((day.hours / maxHours) * 100)}%"></div>
       </div>
       <span class="chart-value">${day.hours.toFixed(1)}h</span>
     </div>
   `).join('');
+}
+
+// === MONTHLY HOURS BAR CHART ===
+function renderMonthlyChart() {
+  const container = document.getElementById('monthly-hours-chart');
+  if (!container) return;
+
+  // ===== GET CURRENT MONTH DAYS =====
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // ===== BUILD DAYS ARRAY =====
+  const days = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = i + 1;
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    return { day: d, dateStr, hours: 0 };
+  });
+
+  // ===== MATCH SHIFTS TO DAYS =====
+  allShifts.forEach(shift => {
+    const shiftDate = String(shift.date).slice(0, 10);
+    const day = days.find(d => d.dateStr === shiftDate);
+    if (day) day.hours += parseFloat(shift.total_hours) || 0;
+  });
+
+  const maxHours = Math.max(...days.map(d => d.hours), 1);
+  const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  // ===== RENDER BARS =====
+  container.innerHTML = `
+    <div class="monthly-chart-wrap">
+      <div class="monthly-bars">
+        ${days.map(day => {
+          const heightPct = Math.round((day.hours / maxHours) * 100);
+          const isToday = day.dateStr === todayStr;
+          const isWeekend = new Date(day.dateStr + 'T00:00:00').getDay() === 0 ||
+                            new Date(day.dateStr + 'T00:00:00').getDay() === 6;
+          return `
+            <div class="monthly-bar-col ${isToday ? 'is-today' : ''} ${isWeekend ? 'is-weekend' : ''}">
+              <div class="monthly-bar-wrap">
+                <div class="monthly-bar-fill" style="height:${heightPct}%;"
+                  title="${day.dateStr}: ${day.hours.toFixed(1)}h"></div>
+              </div>
+              <span class="monthly-bar-label">${day.day}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="monthly-chart-footer">
+        <span>Total this month: <strong>${days.reduce((s, d) => s + d.hours, 0).toFixed(1)}h</strong></span>
+        <span>Days logged: <strong>${days.filter(d => d.hours > 0).length}</strong></span>
+      </div>
+    </div>
+  `;
+}
+
+// === LATE & ABSENCE TRACKER ===
+function calculateShortDays(targetHoursPerDay = 8) {
+  if (!allShifts.length) return 0;
+  return allShifts.filter(s => (s.total_hours || 0) < targetHoursPerDay).length;
+}
+
+// === HISTORY VIEW TOGGLE ===
+function switchHistoryView(type) {
+  const dailyView = document.getElementById('all-sessions');
+  const monthlyView = document.getElementById('monthly-summary');
+  const dailyBtn = document.getElementById('btn-daily-view');
+  const monthlyBtn = document.getElementById('btn-monthly-view');
+
+  if (type === 'daily') {
+    dailyView.style.display = '';
+    monthlyView.style.display = 'none';
+    dailyBtn.classList.add('active');
+    monthlyBtn.classList.remove('active');
+  } else {
+    dailyView.style.display = 'none';
+    monthlyView.style.display = '';
+    dailyBtn.classList.remove('active');
+    monthlyBtn.classList.add('active');
+    renderMonthlySummary();
+  }
+}
+
+// === MONTHLY SUMMARY RENDERER ===
+function renderMonthlySummary() {
+  const container = document.getElementById('monthly-summary');
+  if (!container) return;
+
+  if (!allShifts.length) {
+    container.innerHTML = '<p class="empty-state">No shifts found.</p>';
+    return;
+  }
+
+  // ===== GROUP SHIFTS BY MONTH =====
+  const monthGroups = allShifts.reduce((acc, shift) => {
+    const date = new Date(shift.date + 'T00:00:00');
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const label = date.toLocaleDateString([], { month: 'long', year: 'numeric' });
+    if (!acc[key]) acc[key] = { label, shifts: [], totalHours: 0, days: 0 };
+    acc[key].shifts.push(shift);
+    acc[key].totalHours += parseFloat(shift.total_hours) || 0;
+    acc[key].days++;
+    return acc;
+  }, {});
+
+  // ===== SORT NEWEST FIRST =====
+  const sorted = Object.entries(monthGroups).sort((a, b) => b[0].localeCompare(a[0]));
+
+  const requiredHours = currentUser?.requiredHours || 200;
+
+  container.innerHTML = sorted.map(([key, data]) => {
+    const avgPerDay = data.days > 0 ? (data.totalHours / data.days).toFixed(1) : 0;
+    const pct = Math.min(Math.round((data.totalHours / requiredHours) * 100), 100);
+    const shortDays = data.shifts.filter(s => (s.total_hours || 0) < 8).length;
+
+    return `
+      <div class="monthly-summary-card">
+        <div class="monthly-summary-header">
+          <h3 class="monthly-summary-title">${data.label}</h3>
+          <span class="monthly-summary-total">${data.totalHours.toFixed(1)}h</span>
+        </div>
+        <div class="monthly-summary-bar-track">
+          <div class="monthly-summary-bar-fill" style="width:${pct}%"></div>
+        </div>
+        <div class="monthly-summary-stats">
+          <span>📅 <strong>${data.days}</strong> days worked</span>
+          <span>⏱ <strong>${avgPerDay}h</strong> avg/day</span>
+          ${shortDays > 0 ? `<span class="short-days-badge">⚠️ ${shortDays} short day${shortDays > 1 ? 's' : ''}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 // === HISTORY PAGE ===
@@ -512,6 +911,12 @@ function renderHistoryPage() {
   if (avgEl) avgEl.textContent = `${avgHours.toFixed(1)}h`;
   if (activeEl) activeEl.textContent = '0';
 
+  // === LATE & ABSENCE TRACKER ===
+  const avgHoursPerDay = uniqueDays > 0 ? totalHours / uniqueDays : 8;
+  const shortDays = calculateShortDays(avgHoursPerDay);
+  const shortDaysEl = document.getElementById('history-short-days');
+  if (shortDaysEl) shortDaysEl.textContent = shortDays;
+
   const container = document.getElementById('all-sessions');
   if (!container) return;
 
@@ -520,7 +925,27 @@ function renderHistoryPage() {
     return;
   }
 
-  // Group by date
+  // ===== HELPER: FORMAT TIME HH:MM:SS → H:MM AM/PM =====
+  function fmtTime(t) {
+    if (!t) return '--';
+    const clean = String(t).slice(0, 5);
+    const [h, m] = clean.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return '--';
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hour = h % 12 || 12;
+    return `${hour}:${String(m).padStart(2, '0')} ${period}`;
+  }
+
+  // ===== HELPER: CALCULATE DURATION =====
+  function calcHrs(start, end) {
+    if (!start || !end) return null;
+    const s = new Date(`1970-01-01T${String(start).slice(0,5)}:00`);
+    const e = new Date(`1970-01-01T${String(end).slice(0,5)}:00`);
+    if (isNaN(s) || isNaN(e) || e <= s) return null;
+    return ((e - s) / (1000 * 60 * 60)).toFixed(2);
+  }
+
+  // ===== GROUP BY DATE =====
   const groups = allShifts.reduce((acc, shift) => {
     const dateKey = new Date(shift.date + 'T00:00:00').toLocaleDateString([], {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
@@ -533,17 +958,54 @@ function renderHistoryPage() {
   container.innerHTML = Object.entries(groups).map(([day, shifts]) => `
     <section class="history-day">
       <h2 class="history-day-title">${day}</h2>
-      ${shifts.map(shift => `
-        <div class="session-item">
-          <div class="session-icon">▣</div>
-          <div class="session-meta">
-            <strong>${shift.morning_in || '--'} - ${shift.morning_out || '--'}</strong>
-            ${shift.afternoon_in ? `<span>Afternoon: ${shift.afternoon_in} - ${shift.afternoon_out}</span>` : ''}
-            ${shift.overtime_start ? `<span>Overtime: ${shift.overtime_start} - ${shift.overtime_end}</span>` : ''}
+      ${shifts.map(shift => {
+        const morningHrs = calcHrs(shift.morning_in, shift.morning_out);
+        const afternoonHrs = calcHrs(shift.afternoon_in, shift.afternoon_out);
+        const overtimeHrs = calcHrs(shift.overtime_start, shift.overtime_end);
+
+        return `
+          <div class="history-shift-card">
+            <div class="history-sessions-grid">
+
+              ${shift.morning_in && shift.morning_out ? `
+                <div class="history-session-block">
+                  <div class="history-session-label">Morning</div>
+                  <div class="history-session-time">
+                    ${fmtTime(shift.morning_in)} - ${fmtTime(shift.morning_out)}
+                  </div>
+                  <div class="history-session-duration">(${morningHrs} hrs)</div>
+                </div>
+              ` : ''}
+
+              ${shift.afternoon_in && shift.afternoon_out ? `
+                <div class="history-session-block">
+                  <div class="history-session-label">Afternoon</div>
+                  <div class="history-session-time">
+                    ${fmtTime(shift.afternoon_in)} - ${fmtTime(shift.afternoon_out)}
+                  </div>
+                  <div class="history-session-duration">(${afternoonHrs} hrs)</div>
+                </div>
+              ` : ''}
+
+              ${shift.overtime_start && shift.overtime_end ? `
+                <div class="history-session-block">
+                  <div class="history-session-label">Overtime</div>
+                  <div class="history-session-time">
+                    ${fmtTime(shift.overtime_start)} - ${fmtTime(shift.overtime_end)}
+                  </div>
+                  <div class="history-session-duration">(${overtimeHrs} hrs)</div>
+                </div>
+              ` : ''}
+
+            </div>
+            ${shift.notes ? `<div class="history-shift-note">📝 ${shift.notes}</div>` : ''}
+            <div class="history-shift-total ${(shift.total_hours || 0) < 8 ? 'is-short' : ''}">
+              ${(shift.total_hours || 0).toFixed(2)}h
+              ${(shift.total_hours || 0) < 8 ? '<span class="short-tag">Short</span>' : ''}
+            </div>
           </div>
-          <div class="session-duration">${(shift.total_hours || 0).toFixed(2)}h</div>
-        </div>
-      `).join('')}
+        `;
+      }).join('')}
     </section>
   `).join('');
 }
@@ -629,6 +1091,14 @@ function validateDTRForm() {
 }
 
 function getDTRData() {
+  // === DTR DATE RANGE ===
+  const fromDate = document.getElementById('dtr-range-from')?.value || null;
+  const toDate = document.getElementById('dtr-range-to')?.value || null;
+
+  let filteredShifts = [...allShifts].sort((a, b) => a.date.localeCompare(b.date));
+  if (fromDate) filteredShifts = filteredShifts.filter(s => s.date >= fromDate);
+  if (toDate) filteredShifts = filteredShifts.filter(s => s.date <= toDate);
+
   return {
     fullName: document.getElementById('dtr-full-name')?.value.trim(),
     school: document.getElementById('dtr-school')?.value.trim(),
@@ -638,7 +1108,7 @@ function getDTRData() {
     includeSignature: document.getElementById('dtr-include-signature')?.checked,
     supervisorName: document.getElementById('dtr-supervisor-name')?.value.trim(),
     supervisorTitle: document.getElementById('dtr-supervisor-title')?.value.trim(),
-    shifts: allShifts
+    shifts: filteredShifts
   };
 }
 
@@ -658,7 +1128,7 @@ function generateDTRPrint(data) {
   const printWindow = window.open('', '_blank');
   const rows = data.shifts.map(shift => `
     <tr>
-      <td>${new Date(shift.date + 'T00:00:00').toISOString().slice(0,10)}</td>
+      <td>${String(shift.date).slice(0, 10)}</td>
       <td>
         ${shift.morning_in && shift.morning_out ? `${shift.morning_in} - ${shift.morning_out}` : ''}
         ${shift.afternoon_in && shift.afternoon_out ? `, ${shift.afternoon_in} - ${shift.afternoon_out}` : ''}
@@ -797,12 +1267,35 @@ function generateDTRExcel(data) {
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }];
+  ws['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'DTR');
   XLSX.writeFile(wb, `DTR_${data.fullName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
   closeDTRModal();
   showToast('DTR Excel exported');
+}
+
+// === CONFIRM BEFORE LEAVING ===
+let shiftFormDirty = false;
+
+function markFormDirty() {
+  shiftFormDirty = true;
+}
+
+function markFormClean() {
+  shiftFormDirty = false;
+}
+
+function confirmLeave(callback) {
+  if (!shiftFormDirty) {
+    callback();
+    return;
+  }
+  const confirmed = confirm('You have unsaved changes in the shift form. Are you sure you want to leave?');
+  if (confirmed) {
+    markFormClean();
+    callback();
+  }
 }
 
 // === EVENT LISTENERS ===
@@ -875,15 +1368,21 @@ function setupEventListeners() {
   });
 
   ['morning-in', 'morning-out', 'afternoon-in', 'afternoon-out', 'overtime-start', 'overtime-end'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', updateShiftDurations);
+    document.getElementById(id)?.addEventListener('input', () => {
+      markFormDirty();
+      updateShiftDurations();
+    });
   });
+  
+  // ===== MARK DIRTY ON DATE AND NOTES CHANGE =====
+  document.getElementById('shift-date')?.addEventListener('change', markFormDirty);
+  document.getElementById('shift-notes')?.addEventListener('input', markFormDirty);
 
   document.getElementById('shift-filter-date')?.addEventListener('input', renderShiftHistory);
 }
 
 // === INIT ===
 async function initializeApp() {
-  loadThemePreference();
   setupEventListeners();
   setDefaultShiftDate();
   updateShiftDurations();
@@ -900,5 +1399,13 @@ async function initializeApp() {
 
   showAuthUI('login');
 }
+
+// === WARN BEFORE CLOSING TAB ===
+window.addEventListener('beforeunload', (e) => {
+  if (shiftFormDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 document.addEventListener('DOMContentLoaded', initializeApp);

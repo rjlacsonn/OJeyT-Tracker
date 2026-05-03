@@ -37,9 +37,6 @@
         <button id="login-submit" class="primary-btn" type="submit">Sign In</button>
       </form>
       <p class="auth-switch">Don't have an account? <a href="#signup" id="show-signup">Sign Up</a></p>
-      <div class="auth-help">
-        <button class="secondary-btn" type="button" onclick="showAuthHelp()">Help</button>
-      </div>
     </div>
   </section>
 
@@ -79,9 +76,6 @@
         <button id="signup-submit" class="primary-btn" type="submit">Create Account</button>
       </form>
       <p class="auth-switch">Already have an account? <a href="#login" id="show-login">Sign In</a></p>
-      <div class="auth-help">
-        <button class="secondary-btn" type="button" onclick="showAuthHelp()">Help</button>
-      </div>
     </div>
   </section>
 
@@ -103,12 +97,17 @@
         </button>
       </nav>
       <div class="account-cluster">
-        <button id="theme-toggle-btn" class="icon-btn" type="button" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle Dark / Light Mode">🌙</button>
+        <span id="user-avatar" class="user-avatar"></span>
         <span id="user-email-short" class="account-email"></span>
         <button class="logout-btn" type="button" onclick="logout()" aria-label="Log Out" title="Log Out">Log Out</button>
       </div>
     </div>
   </header>
+
+  <!-- OJT Progress Bar -->
+  <div class="ojt-progress-bar-wrap" id="ojt-progress-bar-wrap" style="display:none;">
+    <div class="ojt-progress-bar-fill" id="ojt-progress-bar-fill"></div>
+  </div>
 
   <main id="main-content-container" class="app-shell" style="display:none;">
     <section id="page-dashboard" class="page app-page" aria-label="Dashboard">
@@ -151,11 +150,44 @@
                 <small>Remaining</small>
               </div>
             </div>
+
+            <!-- ===== DAILY AVERAGE VS TARGET ===== -->
+            <div class="avg-target-row" id="avg-target-row" style="display:none;">
+              <div class="avg-target-bar-wrap">
+                <div class="avg-target-labels">
+                  <span>Your avg: <strong id="avg-daily-display">0h</strong></span>
+                  <span>Target: <strong id="target-daily-display">0h</strong></span>
+                </div>
+                <div class="avg-target-track">
+                  <div class="avg-target-fill" id="avg-target-fill"></div>
+                  <div class="avg-target-marker" id="avg-target-marker"></div>
+                </div>
+                <div class="avg-target-status" id="avg-target-status"></div>
+              </div>
+            </div>
+            <div class="streak-row">
+              <span class="streak-icon">🔥</span>
+              <div class="streak-info">
+                <strong id="streak-count">0</strong>
+                <small>Day Streak</small>
+              </div>
+              <div class="streak-best">
+                <strong id="streak-best">0</strong>
+                <small>Best Streak</small>
+              </div>
+            </div>
+
             <div class="estimated-finish-row">
               <span>Estimated finish:</span>
               <strong id="estimated-finish">Log more sessions to see your estimated finish date.</strong>
             </div>
+            <!-- ===== CHART TOGGLE ===== -->
+            <div class="chart-toggle-row">
+              <button class="chart-toggle-btn active" id="btn-weekly-chart" onclick="switchChart('weekly')">This Week</button>
+              <button class="chart-toggle-btn" id="btn-monthly-chart" onclick="switchChart('monthly')">This Month</button>
+            </div>
             <div id="weekly-hours-chart" class="weekly-chart"></div>
+            <div id="monthly-hours-chart" class="weekly-chart" style="display:none;"></div>
           </article>
 
           <article class="panel timer-panel">
@@ -214,6 +246,12 @@
                 <div class="duration-display">Duration: <span id="overtime-duration">0.00 hrs</span></div>
               </div>
 
+              <!-- ===== SHIFT NOTES ===== -->
+              <div class="shift-notes-field">
+                <label class="shift-notes-label" for="shift-notes">Notes / Remarks <span class="optional-tag">(optional)</span></label>
+                <textarea id="shift-notes" class="shift-notes-input" placeholder="e.g. Worked on inventory module, attended team meeting..." rows="2"></textarea>
+              </div>
+
               <div class="total-duration">
                 <strong>Total Shift Duration: <span id="total-duration">8.00 hours</span></strong>
               </div>
@@ -256,16 +294,31 @@
           <h1>Session History</h1>
           <p>Review all your check-in and check-out records</p>
         </div>
-        <button id="export-history-btn" class="secondary-btn" type="button" onclick="openDTRModal()">Save / Print DTR</button>
+        <div class="history-export-controls">
+          <div class="dtr-date-range">
+            <label class="dtr-range-label">From</label>
+            <input type="date" id="dtr-range-from" class="dtr-range-input" />
+            <label class="dtr-range-label">To</label>
+            <input type="date" id="dtr-range-to" class="dtr-range-input" />
+          </div>
+          <button id="export-history-btn" class="primary-btn dtr-export-btn" type="button" onclick="openDTRModal()">Save / Print DTR</button>
+        </div>
       </div>
       <div class="history-stat-grid">
         <article class="panel stat-panel"><span>□</span><strong id="history-days">0</strong><small>Total Days</small></article>
         <article class="panel stat-panel"><span>◷</span><strong id="history-hours">0h</strong><small>Total Hours</small></article>
         <article class="panel stat-panel"><span>▥</span><strong id="history-average">0h</strong><small>Daily Avg</small></article>
-        <article class="panel stat-panel"><span>↯</span><strong id="history-active">0</strong><small>Active</small></article>
+        <article class="panel stat-panel"><span>⚡</span><strong id="history-short-days">0</strong><small>Short Days</small></article>
       </div>
+      <!-- ===== VIEW TOGGLE ===== -->
+      <div class="history-view-toggle">
+        <button class="chart-toggle-btn active" id="btn-daily-view" onclick="switchHistoryView('daily')">Daily</button>
+        <button class="chart-toggle-btn" id="btn-monthly-view" onclick="switchHistoryView('monthly')">Monthly</button>
+      </div>
+
       <article class="panel history-panel">
         <div id="all-sessions" class="history-list"></div>
+        <div id="monthly-summary" class="monthly-summary-list" style="display:none;"></div>
       </article>
     </section>
 
@@ -306,19 +359,6 @@
 
   <div id="toast-container" class="toast-container"></div>
 
-  <!-- Reset Confirmation Modal -->
-  <div id="reset-confirmation-modal" class="modal" style="display:none;">
-    <div class="modal-overlay" onclick="closeResetConfirmation()"></div>
-    <div class="modal-content">
-      <h2>Reset Session Timer?</h2>
-      <p>Are you sure you want to reset the current session timer? This cannot be undone.</p>
-      <div class="modal-actions">
-        <button class="secondary-btn" type="button" onclick="closeResetConfirmation()">Cancel</button>
-        <button class="primary-btn" type="button" onclick="confirmReset()">Confirm</button>
-      </div>
-    </div>
-  </div>
-
   <!-- DTR Modal -->
   <div id="dtr-modal" class="modal" style="display:none;">
     <div class="modal-overlay" onclick="closeDTRModal()"></div>
@@ -328,7 +368,7 @@
       <form id="dtr-form" class="dtr-form">
         <label class="field">
           <span>Full Name</span>
-          <input id="dtr-full-name" type="text" placeholder="e.g. RJ Aaron Lacson" required />
+          <input id="dtr-full-name" type="text" placeholder="e.g. Juan Dela Cruz" required />
         </label>
         <label class="field">
           <span>School / University</span>
@@ -336,11 +376,11 @@
         </label>
         <label class="field">
           <span>Department / Course</span>
-          <input id="dtr-department" type="text" placeholder="e.g. BSCS" required />
+          <input id="dtr-department" type="text" placeholder="e.g. CCSS / BSCS" required />
         </label>
         <label class="field">
           <span>Company / Organization</span>
-          <input id="dtr-company" type="text" placeholder="e.g. Associated Labor Unions" required />
+          <input id="dtr-company" type="text" placeholder="e.g. Accenture" required />
         </label>
         <label class="field">
           <span>Position / Role</span>

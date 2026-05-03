@@ -149,6 +149,20 @@
 
 /* ===== MOBILE: SHIFT HISTORY CARD LAYOUT ===== */
 @media (max-width: 600px) {
+  .shift-session {
+    overflow: hidden; /* prevents children from bleeding out */
+  }
+
+  .time-fields {
+    grid-template-columns: 1fr; /* stack vertically instead of side by side */
+    gap: 12px;
+  }
+
+  .field input[type="time"] {
+    width: 100%;
+    min-width: 0; /* critical — removes browser default min-width on time inputs */
+  }
+  
   .shift-history-table {
     overflow-x: visible;
   }
@@ -231,12 +245,6 @@
   .logout-btn {
     padding: 4px 8px;
     font-size: 11px;
-  }
-
-  .icon-btn {
-    width: 28px;
-    height: 28px;
-    font-size: 13px;
   }
 }
 
