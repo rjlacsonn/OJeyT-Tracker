@@ -82,12 +82,13 @@
   min-width: 0;
   min-height: 2.85rem;
   border: 1px solid #e5eaf2;
-  border-radius: 8px;
+  border-radius: 8px;       /* consistent — NOT 0 */
   background: #fbfcfe;
   color: var(--ink);
   outline: 0;
   padding: 0 14px;
   font-size: 0.95rem;
+  box-sizing: border-box;
 }
 
 .field input:focus {
@@ -140,8 +141,8 @@
   background: var(--teal-soft);
 }
 
+/* ===== PROGRESS PANEL — no forced min-height ===== */
 .progress-panel {
-  min-height: 350px;
   padding: 30px 34px 26px;
   display: grid;
   justify-items: center;
@@ -250,7 +251,7 @@
   color: var(--ink);
   font-size: 18px;
   line-height: 1;
-  font-weight: 800;
+  font-weight: 600;   /* was 800 — calmer */
 }
 
 .mini-stats small,
@@ -260,12 +261,12 @@
   line-height: 1.25;
 }
 
+/* ===== TIMER/LOG PANEL — no forced min-height ===== */
 .timer-panel {
-  min-height: 240px;
   padding: 31px 34px 24px;
   display: grid;
   justify-items: center;
-  align-content: center;
+  align-content: start;  /* was center — allows content to shrink-wrap */
   text-align: center;
 }
 
@@ -280,6 +281,7 @@
   border-radius: 12px;
   padding: 16px;
   background: var(--card);
+  box-sizing: border-box;  /* ensure padding doesn't cause overflow */
 }
 
 .shift-session h4 {
@@ -314,6 +316,11 @@
 .shift-history-table {
   width: 100%;
   overflow-x: auto;
+  height: fit-content;
+}
+
+.table-body {
+  height: fit-content;
 }
 
 .table-header,
@@ -437,18 +444,9 @@
 
 .weekly-chart .chart-row {
   display: grid;
-  grid-template-columns: 32px 1fr 42px;
+  grid-template-columns: 32px 1fr 46px;
   gap: 8px;
   align-items: center;
-}
-
-.weekly-chart .chart-value {
-  width: 46px;
-  text-align: right;
-}
-
-.weekly-chart .chart-value {
-  width: 46px;
 }
 
 .weekly-chart .chart-label {
@@ -544,7 +542,7 @@
   border-radius: var(--radius-sm);
   background: var(--card-2);
   display: grid;
-  gap: 14px;
+  gap: 18px;   /* was 14px — more breathing room */
 }
 
 .signature-section.hidden {
@@ -651,9 +649,12 @@
   font-size: 12px;
 }
 
+/* ===== RECENT PANEL — shrink-wraps to content ===== */
 .recent-panel {
   padding: 24px 20px;
   min-height: 0;
+  height: fit-content;
+  align-self: start;
   overflow-x: hidden;
 }
 
@@ -749,6 +750,7 @@
 
 .stat-panel strong {
   font-size: 22px;
+  font-weight: 600;   /* was 800 — calmer weight */
 }
 
 .history-panel {
@@ -770,8 +772,8 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-weight: 700;           /* was 800 */
+  letter-spacing: 0.04em;     /* was 0.08em — less harsh */
   text-transform: uppercase;
 }
 
@@ -979,30 +981,34 @@
 }
 
 .history-session-label {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.65rem;
+  font-weight: 600;       /* was 700 */
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em; /* was 0.08em */
   color: var(--muted);
 }
 
 .history-session-time {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 500;       /* was 600 */
   color: var(--ink);
+  font-family: var(--font); /* was mono — friendlier */
+  letter-spacing: 0;
 }
 
 .history-session-duration {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   color: var(--soft);
+  font-weight: 400;
 }
 
 .history-shift-total {
-  font-size: 1.1rem;
-  font-weight: 800;
+  font-size: 0.95rem;     /* was 1.1rem */
+  font-weight: 700;       /* was 800 */
   color: var(--teal-dark);
   white-space: nowrap;
   align-self: center;
+  font-family: var(--font); /* was mono */
 }
 
 /* ===== DTR DATE RANGE FILTER ===== */
@@ -1088,6 +1094,7 @@
   line-height: 1.5;
   resize: vertical;
   font-family: inherit;
+  box-sizing: border-box;
 }
 
 .shift-notes-input:focus {
@@ -1429,4 +1436,3 @@
   color: #a16100;
   font-weight: 600;
 }
-

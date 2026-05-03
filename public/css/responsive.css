@@ -1,3 +1,8 @@
+/* ============================================================
+   RESPONSIVE — Mobile First Breakpoints
+   ============================================================ */
+
+/* ===== TABLET: ≤ 980px ===== */
 @media (max-width: 980px) {
   .topbar-inner {
     width: 100%;
@@ -11,14 +16,12 @@
     gap: 0;
     box-sizing: border-box;
   }
-  
-  /* ===== ROW 1 LEFT: LOGO ===== */
+
   .brand-button {
     order: 1;
     flex: 0 0 auto;
   }
 
-  /* ===== ROW 1 RIGHT: ACCOUNT CLUSTER ===== */
   .account-cluster {
     order: 2;
     flex: 1 1 auto;
@@ -36,7 +39,6 @@
     white-space: nowrap;
   }
 
-  /* ===== ROW 2: NAV FULL WIDTH CENTERED ===== */
   .top-nav {
     order: 3;
     flex: 0 0 100%;
@@ -66,11 +68,18 @@
 
   .recent-panel {
     min-height: 0;
+    height: fit-content;
+    align-self: start;
   }
 
   .shift-history-table {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    height: fit-content;
+  }
+
+  .table-body {
+    height: fit-content;
   }
 
   .shift-history-table .table-header,
@@ -79,6 +88,7 @@
   }
 }
 
+/* ===== SMALL TABLET: ≤ 720px ===== */
 @media (max-width: 720px) {
   .history-stat-grid,
   .mini-stats {
@@ -113,7 +123,6 @@
     justify-self: start;
   }
 
-  /* ===== KEEP TOPBAR FLEX ON SMALLER SCREENS ===== */
   .topbar-inner {
     display: flex;
     flex-wrap: wrap;
@@ -145,62 +154,105 @@
   .save-btn {
     width: 100%;
   }
-}
 
-/* ===== MOBILE: SHIFT HISTORY CARD LAYOUT ===== */
-@media (max-width: 600px) {
-  /* ===== FIX PANEL OVERFLOW ===== */
-  .timer-panel {
-    padding: 16px;
-    box-sizing: border-box;
-    overflow: visible;
+  /* ===== REMOVE FORCED MIN-HEIGHTS ON PANELS ===== */
+  .progress-panel {
+    min-height: 0;
   }
 
+  .timer-panel {
+    min-height: 0;
+  }
+}
+
+/* ===== MOBILE: ≤ 600px ===== */
+@media (max-width: 600px) {
+
+  /* ===== TOPBAR ===== */
+  .topbar-inner {
+    padding: 8px 10px;
+    gap: 0;
+  }
+
+  .brand-name {
+    font-size: 13px;
+  }
+
+  .brand-mark {
+    width: 22px;
+    height: 22px;
+    font-size: 10px;
+  }
+
+  .account-cluster {
+    gap: 5px;
+  }
+
+  .account-email {
+    max-width: 70px;
+    font-size: 10px;
+  }
+
+  .logout-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  /* ===== REMOVE FORCED MIN-HEIGHTS ===== */
+  .progress-panel {
+    min-height: 0;
+  }
+
+  .timer-panel {
+    min-height: 0;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+
+  .recent-panel {
+    min-height: 0;
+    height: fit-content;
+    align-self: start;
+  }
+
+  /* ===== SHIFT FORM OVERFLOW FIX ===== */
   .shift-form {
     width: 100%;
     box-sizing: border-box;
   }
 
-  /* ===== FIX DATE + TIME INPUTS OVERFLOWING ===== */
-  .shift-form .field input,
-  .shift-form .field input[type="date"],
-  .shift-form .field input[type="time"] {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    box-sizing: border-box;
-    border-radius: var(--radius-sm); /* ensure rounded corners stay */
-  }
-
+  /* ===== SHIFT SESSION CARDS ===== */
   .shift-session {
-    overflow: visible; /* was hidden — that was clipping the right rounded corners */
+    overflow: visible;
     width: 100%;
     box-sizing: border-box;
-    padding: 14px; /* tighten padding so content fits */
+    padding: 14px;
   }
 
+  /* ===== TIME FIELDS STACK VERTICALLY ===== */
   .time-fields {
     grid-template-columns: 1fr;
     gap: 12px;
     width: 100%;
   }
 
-  .shift-session {
-    overflow: hidden; /* prevents children from bleeding out */
+  /* ===== DATE + TIME INPUTS — FORCE FIT ===== */
+  .shift-form .field input,
+  .shift-form .field input[type="date"],
+  .shift-form .field input[type="time"],
+  .field input[type="time"],
+  .field input[type="date"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 8px !important;
   }
 
-  .time-fields {
-    grid-template-columns: 1fr; /* stack vertically instead of side by side */
-    gap: 12px;
-  }
-
-  .field input[type="time"] {
-    width: 100%;
-    min-width: 0; /* critical — removes browser default min-width on time inputs */
-  }
-
+  /* ===== SHIFT HISTORY TABLE → CARD LAYOUT ===== */
   .shift-history-table {
     overflow-x: visible;
+    height: fit-content;
   }
 
   .shift-history-table .table-header {
@@ -252,46 +304,16 @@
     padding: 8px 10px;
     font-size: 0.8rem;
   }
-
-  /* ===== TOPBAR ROW 1 FIX FOR SMALL PHONES ===== */
-  .topbar-inner {
-    padding: 8px 10px;
-    gap: 0;
-  }
-
-  .brand-name {
-    font-size: 13px;
-  }
-
-  .brand-mark {
-    width: 22px;
-    height: 22px;
-    font-size: 10px;
-  }
-
-  .account-cluster {
-    gap: 5px;
-  }
-
-  .account-email {
-    max-width: 70px;
-    font-size: 10px;
-  }
-
-  .logout-btn {
-    padding: 4px 8px;
-    font-size: 11px;
-  }
 }
 
+/* ===== SMALL MOBILE: ≤ 440px ===== */
 @media (max-width: 440px) {
-  .history-stat-grid,
-  .mini-stats {
-    grid-template-columns: 1fr;
+  .history-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .timer-display {
-    font-size: 38px;
+  .mini-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .page-heading h1 {
