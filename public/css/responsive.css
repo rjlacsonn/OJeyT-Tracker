@@ -338,3 +338,59 @@
     justify-content: center;
   }
 }
+
+/* ===== NUCLEAR OVERFLOW FIX — MOBILE ===== */
+@media (max-width: 600px) {
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  .app-shell {
+    width: 100%;
+    padding-left: 14px;
+    padding-right: 14px;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+
+  .panel {
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .timer-panel {
+    width: 100%;
+    padding: 16px 14px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .shift-form,
+  .shift-session,
+  .time-fields,
+  .field {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .shift-session {
+    padding: 14px 12px;
+    overflow: hidden;
+  }
+
+  .field input,
+  .field input[type="time"],
+  .field input[type="date"] {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 8px !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
