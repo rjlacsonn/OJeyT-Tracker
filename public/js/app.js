@@ -95,13 +95,14 @@ function showAppUI() {
   const emailEl = document.getElementById('user-email-short');
   if (emailEl) emailEl.textContent = truncateEmail(currentUser?.email || '');
 
-  // ===== SET AVATAR INITIALS =====
-  const avatarEl = document.getElementById('user-avatar');
-  if (avatarEl) {
-    const name = currentUser?.fullName || currentUser?.email || 'U';
-    const initials = name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('');
-    avatarEl.textContent = initials.toUpperCase();
+  // ===== LOAD PROFILE PICTURE FROM STORAGE =====
+  const storedPic = localStorage.getItem('profilePicture');
+  if (storedPic) {
+    currentUser.profilePicture = storedPic;
   }
+
+  // ===== SET AVATAR =====
+  updateAvatarDisplay();
 
   // ===== SHOW PROGRESS BAR =====
   const barWrap = document.getElementById('ojt-progress-bar-wrap');
@@ -1022,6 +1023,7 @@ function renderSettingsPage() {
   const hoursInput = document.getElementById('required-hours');
   if (nameInput) nameInput.value = currentUser.fullName || '';
   if (hoursInput) hoursInput.value = currentUser.requiredHours || 200;
+  updateProfilePicturePreview();
 }
 
 async function saveSettings() {
@@ -1051,6 +1053,89 @@ async function saveSettings() {
     navTo('dashboard');
   } finally {
     setButtonLoading(saveBtn, false);
+  }
+}
+
+// === PROFILE PICTURE FUNCTIONS ===
+function handleProfilePictureUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  // Validate file type
+  if (!['image/jpeg', 'image/png'].includes(file.type)) {
+    showToast('Please upload a JPG or PNG image');
+    return;
+  }
+
+  // Validate file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Image size must be less than 5MB');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const base64Data = e.target.result;
+    // Store in localStorage
+    localStorage.setItem('profilePicture', base64Data);
+    currentUser.profilePicture = base64Data;
+    updateProfilePicturePreview();
+    updateAvatarDisplay();
+    showToast('Profile picture updated');
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateProfilePicturePreview() {
+  const preview = document.getElementById('profile-pic-preview');
+  const removeBtn = document.getElementById('remove-pic-btn-container');
+  const changeBtn = document.getElementById('change-pic-btn');
+  
+  if (!preview) return;
+
+  const profilePic = currentUser?.profilePicture || localStorage.getItem('profilePicture');
+
+  if (profilePic) {
+    preview.style.backgroundImage = `url('${profilePic}')`;
+    preview.classList.add('has-image');
+    preview.textContent = '';
+    removeBtn.style.display = 'flex';
+  } else {
+    const firstName = getFirstName(currentUser?.fullName || 'User');
+    const initials = firstName.slice(0, 2).toUpperCase();
+    preview.style.backgroundImage = '';
+    preview.classList.remove('has-image');
+    preview.textContent = initials;
+    if (removeBtn) removeBtn.style.display = 'none';
+  }
+}
+
+function removeProfilePicture() {
+  if (!confirm('Are you sure you want to remove your profile picture?')) return;
+  
+  localStorage.removeItem('profilePicture');
+  if (currentUser) currentUser.profilePicture = null;
+  updateProfilePicturePreview();
+  updateAvatarDisplay();
+  showToast('Profile picture removed');
+}
+
+function updateAvatarDisplay() {
+  const avatarEl = document.getElementById('user-avatar');
+  if (!avatarEl) return;
+
+  const profilePic = currentUser?.profilePicture || localStorage.getItem('profilePicture');
+
+  if (profilePic) {
+    avatarEl.style.backgroundImage = `url('${profilePic}')`;
+    avatarEl.style.backgroundSize = 'cover';
+    avatarEl.style.backgroundPosition = 'center';
+    avatarEl.textContent = '';
+  } else {
+    avatarEl.style.backgroundImage = '';
+    const firstName = getFirstName(currentUser?.fullName || 'User');
+    const initials = firstName.slice(0, 2).toUpperCase();
+    avatarEl.textContent = initials;
   }
 }
 
@@ -1104,6 +1189,9 @@ function getDTRData() {
   if (fromDate) filteredShifts = filteredShifts.filter(s => s.date >= fromDate);
   if (toDate) filteredShifts = filteredShifts.filter(s => s.date <= toDate);
 
+  // Get profile picture from current user or localStorage
+  const profilePicture = currentUser?.profilePicture || localStorage.getItem('profilePicture');
+
   return {
     fullName: document.getElementById('dtr-full-name')?.value.trim(),
     school: document.getElementById('dtr-school')?.value.trim(),
@@ -1113,6 +1201,7 @@ function getDTRData() {
     includeSignature: document.getElementById('dtr-include-signature')?.checked,
     supervisorName: document.getElementById('dtr-supervisor-name')?.value.trim(),
     supervisorTitle: document.getElementById('dtr-supervisor-title')?.value.trim(),
+    profilePicture: profilePicture,
     shifts: filteredShifts
   };
 }
@@ -1144,6 +1233,7 @@ function generateDTRPrint(data) {
   `).join('');
 
   const totalHours = data.shifts.reduce((sum, s) => sum + (s.total_hours || 0), 0);
+  const profilePicHTML = data.profilePicture ? `<img src="${data.profilePicture}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover;" />` : '';
 
   printWindow.document.write(`
     <!DOCTYPE html>
@@ -1152,7 +1242,9 @@ function generateDTRPrint(data) {
       <title>DTR - ${data.fullName}</title>
       <style>
         body { font-family: serif; margin: 20px; color: #000; }
-        .doc-header { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 16px; }
+        .dtr-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .doc-header { display: flex; justify-content: space-between; font-size: 11px; }
+        .profile-section { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
         h1 { text-align: center; font-size: 18px; margin: 0; }
         .subtitle { text-align: center; font-size: 13px; margin-bottom: 20px; }
         .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 20px; font-size: 13px; }
@@ -1166,9 +1258,16 @@ function generateDTRPrint(data) {
       </style>
     </head>
     <body>
-      <div class="doc-header">
-        <span>${new Date().toLocaleString()}</span>
-        <span>DTR - ${data.fullName}</span>
+      <div class="dtr-header">
+        <div class="doc-header">
+          <span>${new Date().toLocaleString()}</span>
+        </div>
+        ${data.profilePicture ? `
+          <div class="profile-section">
+            ${profilePicHTML}
+            <span style="font-size: 12px; font-weight: bold;">${data.fullName}</span>
+          </div>
+        ` : ''}
       </div>
       <h1>DAILY TIME RECORD</h1>
       <p class="subtitle">On-the-Job Training</p>

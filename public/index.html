@@ -331,6 +331,22 @@
         <section class="settings-block">
           <h2><span class="teal-icon">👤</span>Profile</h2>
           <div class="settings-card">
+            <!-- Profile Picture Upload Section -->
+            <div class="profile-picture-section">
+              <div class="profile-pic-container">
+                <div id="profile-pic-preview" class="profile-pic-preview" title="Click to change profile picture" onclick="document.getElementById('profile-pic-input').click()"></div>
+                <input id="profile-pic-input" type="file" accept="image/jpeg,image/png" style="display:none;" onchange="handleProfilePictureUpload(event)" />
+                <button id="change-pic-btn" class="change-pic-btn" type="button" onclick="document.getElementById('profile-pic-input').click()">
+                  📷 Upload Photo
+                </button>
+              </div>
+              <div id="remove-pic-btn-container" class="remove-pic-btn-container" style="display:none;">
+                <button id="remove-pic-btn" class="remove-pic-btn" type="button" onclick="removeProfilePicture()">
+                  ✕ Remove Photo
+                </button>
+              </div>
+            </div>
+
             <label class="field">
               <span>Your Name</span>
               <input id="settings-name-input" type="text" placeholder="Your name" />
