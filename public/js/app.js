@@ -546,12 +546,14 @@ function updateAvgTargetIndicator(totalHours, uniqueDays, requiredHours) {
   // ===== STATUS MESSAGE =====
   if (status) {
     if (avgDaily >= targetDaily) {
-      fill.style.background = 'var(--teal)';
+      fill.classList.remove('behind');
+      fill.classList.add('on-track');
       status.textContent = `✅ On track — you're averaging ${avgDaily.toFixed(1)}h/day`;
       status.className = 'avg-target-status status-good';
     } else {
       const diff = (targetDaily - avgDaily).toFixed(1);
-      fill.style.background = '#f59e0b';
+      fill.classList.remove('on-track');
+      fill.classList.add('behind');
       status.textContent = `⚠️ Need ${diff}h more per day to finish on time`;
       status.className = 'avg-target-status status-warn';
     }
@@ -616,7 +618,10 @@ function updateDashboard() {
   const streak = calculateStreak();
   const streakEl = document.getElementById('streak-count');
   const streakBestEl = document.getElementById('streak-best');
-  if (streakEl) streakEl.textContent = streak.current;
+  if (streakEl) {
+    streakEl.textContent = streak.current;
+    streakEl.classList.toggle('zero-streak', streak.current === 0);
+  }
   if (streakBestEl) streakBestEl.textContent = streak.best;
 
   // ===== REFRESH WHICHEVER CHART IS ACTIVE =====

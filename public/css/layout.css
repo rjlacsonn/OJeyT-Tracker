@@ -90,11 +90,11 @@ button {
   background: var(--teal);
   color: white;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .brand-name {
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
@@ -203,7 +203,7 @@ button {
   margin: 0 0 6px;
   font-size: clamp(1.6rem, 2.6vw, 2rem);
   line-height: 1.05;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.055em;
 }
 

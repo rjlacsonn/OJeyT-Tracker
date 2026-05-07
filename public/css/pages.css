@@ -64,7 +64,7 @@
 .field > span {
   color: #4d5a73;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -121,7 +121,7 @@
   border-radius: 8px;
   padding: 0 1.125rem;
   font-size: 0.95rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .primary-btn {
@@ -227,8 +227,8 @@
   width: min(320px, 100%);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 6px;
+  gap: 16px;
+  margin-top: 16px;
   text-align: center;
 }
 
@@ -237,7 +237,11 @@
   min-width: 0;
   display: grid;
   justify-items: center;
-  gap: 5px;
+  gap: 6px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(21, 184, 166, 0.08), rgba(21, 184, 166, 0.04));
+  border: 1px solid rgba(21, 184, 166, 0.12);
 }
 
 .mini-stats span,
@@ -326,11 +330,11 @@
 .table-header,
 .table-body .shift-row {
   display: grid;
-  grid-template-columns: 100px 1fr 1fr 1fr 80px 120px;
-  gap: 10px;
-  padding: 12px 8px;
+  grid-template-columns: 110px 1fr 1fr 1fr 90px 130px;
+  gap: 12px;
+  padding: 12px 10px;
   align-items: start;
-  min-width: 600px;
+  min-width: 650px;
 }
 
 .table-header {
@@ -363,6 +367,11 @@
   min-width: 0;
 }
 
+.shift-row .time-range.empty-value {
+  color: #d1d5dc;
+  font-weight: 400;
+}
+
 .shift-row .total-hours {
   font-weight: 700;
   color: var(--teal-dark);
@@ -371,17 +380,43 @@
 
 .shift-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: nowrap;
   align-items: center;
 }
 
 .shift-actions button {
-  padding: 5px 10px;
+  padding: 6px 12px;
   font-size: 0.75rem;
-  border-radius: 4px;
+  border-radius: 6px;
+  border: 0;
   min-height: unset;
   white-space: nowrap;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.shift-actions .edit-btn {
+  background: rgba(21, 184, 166, 0.1);
+  color: var(--teal-dark);
+  border: 1px solid rgba(21, 184, 166, 0.3);
+}
+
+.shift-actions .edit-btn:hover {
+  background: rgba(21, 184, 166, 0.15);
+  border-color: var(--teal-dark);
+}
+
+.shift-actions .delete-btn {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.shift-actions .delete-btn:hover {
+  background: #fecaca;
+  border-color: #dc2626;
 }
 
 .filter-controls {
@@ -804,7 +839,7 @@
   gap: 12px;
   margin: 0 0 16px;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .settings-card {
@@ -1152,9 +1187,14 @@
 .streak-info strong,
 .streak-best strong {
   font-size: 1.4rem;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--teal-dark);
   line-height: 1;
+}
+
+.streak-info strong.zero-streak {
+  color: var(--soft);
+  opacity: 0.6;
 }
 
 .streak-info small,
@@ -1201,7 +1241,7 @@
 
 .avg-target-track {
   position: relative;
-  height: 10px;
+  height: 12px;
   border-radius: 999px;
   background: rgba(21, 184, 166, 0.1);
   overflow: visible;
@@ -1211,16 +1251,25 @@
   height: 100%;
   border-radius: 999px;
   background: var(--teal);
-  transition: width 0.5s ease;
+  transition: width 0.5s ease, background 0.5s ease;
+}
+
+.avg-target-fill.on-track {
+  background: #10b981;
+}
+
+.avg-target-fill.behind {
+  background: #f59e0b;
 }
 
 .avg-target-marker {
   position: absolute;
-  top: -4px;
-  width: 3px;
-  height: 18px;
+  top: -5px;
+  width: 4px;
+  height: 20px;
   border-radius: 999px;
   background: var(--ink);
+  box-shadow: 0 0 0 2px rgba(6, 20, 50, 0.1);
   transform: translateX(-50%);
   transition: left 0.5s ease;
 }
