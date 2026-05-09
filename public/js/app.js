@@ -89,16 +89,27 @@ function showAuthUI(target = 'login') {
   currentPage = target;
 }
 
-function showAppUI() {
+async function showAppUI() {
   document.getElementById('topbar-container').style.display = '';
   document.getElementById('main-content-container').style.display = '';
   const emailEl = document.getElementById('user-email-short');
   if (emailEl) emailEl.textContent = truncateEmail(currentUser?.email || '');
 
-  // ===== LOAD PROFILE PICTURE FROM STORAGE =====
-  const storedPic = localStorage.getItem('profilePicture');
-  if (storedPic) {
-    currentUser.profilePicture = storedPic;
+  // ===== LOAD PROFILE PICTURE FROM SUPABASE =====
+  if (currentUser?.id) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('profile_picture_url')
+        .eq('id', currentUser.id)
+        .single();
+      
+      if (profile?.profile_picture_url) {
+        currentUser.profilePictureUrl = profile.profile_picture_url;
+      }
+    } catch (err) {
+      console.error('Error loading profile picture:', err);
+    }
   }
 
   // ===== SET AVATAR =====
@@ -1057,7 +1068,7 @@ async function saveSettings() {
 }
 
 // === PROFILE PICTURE FUNCTIONS ===
-function handleProfilePictureUpload(event) {
+async function handleProfilePictureUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
 
@@ -1073,33 +1084,77 @@ function handleProfilePictureUpload(event) {
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const base64Data = e.target.result;
-    // Store in localStorage
-    localStorage.setItem('profilePicture', base64Data);
-    currentUser.profilePicture = base64Data;
+  if (!currentUser?.id) {
+    showToast('User not logged in');
+    return;
+  }
+
+  showToast('Uploading profile picture...');
+
+  try {
+    // Generate unique filename
+    const ext = file.type === 'image/png' ? 'png' : 'jpg';
+    const fileName = `${currentUser.id}-${Date.now()}.${ext}`;
+
+    // Delete old profile picture if it exists
+    if (currentUser.profilePictureUrl) {
+      const oldFileName = currentUser.profilePictureUrl.split('/').pop();
+      await supabase.storage
+        .from('profile-pictures')
+        .remove([oldFileName]);
+    }
+
+    // Upload new image to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('profile-pictures')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      showToast('Failed to upload image: ' + uploadError.message);
+      return;
+    }
+
+    // Get public URL
+    const { data } = supabase.storage
+      .from('profile-pictures')
+      .getPublicUrl(fileName);
+
+    const imageUrl = data.publicUrl;
+
+    // Save URL to database
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ profile_picture_url: imageUrl })
+      .eq('id', currentUser.id);
+
+    if (updateError) {
+      showToast('Failed to save profile picture: ' + updateError.message);
+      return;
+    }
+
+    currentUser.profilePictureUrl = imageUrl;
     updateProfilePicturePreview();
     updateAvatarDisplay();
-    showToast('Profile picture updated');
-  };
-  reader.readAsDataURL(file);
+    showToast('Profile picture updated successfully');
+  } catch (err) {
+    console.error('Profile picture upload error:', err);
+    showToast('Error uploading profile picture');
+  }
 }
 
 function updateProfilePicturePreview() {
   const preview = document.getElementById('profile-pic-preview');
   const removeBtn = document.getElementById('remove-pic-btn-container');
-  const changeBtn = document.getElementById('change-pic-btn');
   
   if (!preview) return;
 
-  const profilePic = currentUser?.profilePicture || localStorage.getItem('profilePicture');
+  const profilePic = currentUser?.profilePictureUrl;
 
   if (profilePic) {
     preview.style.backgroundImage = `url('${profilePic}')`;
     preview.classList.add('has-image');
     preview.textContent = '';
-    removeBtn.style.display = 'flex';
+    if (removeBtn) removeBtn.style.display = 'flex';
   } else {
     const firstName = getFirstName(currentUser?.fullName || 'User');
     const initials = firstName.slice(0, 2).toUpperCase();
@@ -1110,21 +1165,51 @@ function updateProfilePicturePreview() {
   }
 }
 
-function removeProfilePicture() {
+async function removeProfilePicture() {
   if (!confirm('Are you sure you want to remove your profile picture?')) return;
   
-  localStorage.removeItem('profilePicture');
-  if (currentUser) currentUser.profilePicture = null;
-  updateProfilePicturePreview();
-  updateAvatarDisplay();
-  showToast('Profile picture removed');
+  if (!currentUser?.id) {
+    showToast('User not logged in');
+    return;
+  }
+
+  showToast('Removing profile picture...');
+
+  try {
+    // Delete file from storage if it exists
+    if (currentUser.profilePictureUrl) {
+      const fileName = currentUser.profilePictureUrl.split('/').pop();
+      await supabase.storage
+        .from('profile-pictures')
+        .remove([fileName]);
+    }
+
+    // Update database
+    const { error } = await supabase
+      .from('profiles')
+      .update({ profile_picture_url: null })
+      .eq('id', currentUser.id);
+
+    if (error) {
+      showToast('Failed to remove picture: ' + error.message);
+      return;
+    }
+
+    currentUser.profilePictureUrl = null;
+    updateProfilePicturePreview();
+    updateAvatarDisplay();
+    showToast('Profile picture removed');
+  } catch (err) {
+    console.error('Error removing profile picture:', err);
+    showToast('Error removing profile picture');
+  }
 }
 
 function updateAvatarDisplay() {
   const avatarEl = document.getElementById('user-avatar');
   if (!avatarEl) return;
 
-  const profilePic = currentUser?.profilePicture || localStorage.getItem('profilePicture');
+  const profilePic = currentUser?.profilePictureUrl;
 
   if (profilePic) {
     avatarEl.style.backgroundImage = `url('${profilePic}')`;
@@ -1189,8 +1274,8 @@ function getDTRData() {
   if (fromDate) filteredShifts = filteredShifts.filter(s => s.date >= fromDate);
   if (toDate) filteredShifts = filteredShifts.filter(s => s.date <= toDate);
 
-  // Get profile picture from current user or localStorage
-  const profilePicture = currentUser?.profilePicture || localStorage.getItem('profilePicture');
+  // Get profile picture from Supabase
+  const profilePicture = currentUser?.profilePictureUrl;
 
   return {
     fullName: document.getElementById('dtr-full-name')?.value.trim(),
