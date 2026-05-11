@@ -1501,6 +1501,75 @@ function setupEventListeners() {
     showAuthUI('login');
   });
 
+  // ===== FORGOT PASSWORD NAVIGATION =====
+  document.getElementById('show-forgot')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    clearAuthErrors();
+    showAuthUI('forgot');
+  });
+
+  document.getElementById('show-login-from-forgot')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    clearAuthErrors();
+    showAuthUI('login');
+  });
+
+  // ===== FORGOT PASSWORD FORM =====
+  document.getElementById('forgot-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitBtn = document.getElementById('forgot-submit');
+    const errorEl = document.getElementById('forgot-error');
+    const successEl = document.getElementById('forgot-success');
+
+    errorEl.textContent = '';
+    errorEl.classList.remove('is-visible');
+    successEl.style.display = 'none';
+
+    setButtonLoading(submitBtn, true, 'Sending...');
+    const email = document.getElementById('forgot-email').value.trim();
+
+    try {
+      const result = await auth.forgotPassword(email);
+      if (!result.success) {
+        errorEl.textContent = result.message;
+        errorEl.classList.add('is-visible');
+      } else {
+        successEl.textContent = result.message;
+        successEl.style.display = 'block';
+        document.getElementById('forgot-email').value = '';
+      }
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
+  // ===== RESET PASSWORD FORM =====
+  document.getElementById('reset-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitBtn = document.getElementById('reset-submit');
+    const errorEl = document.getElementById('reset-error');
+
+    errorEl.textContent = '';
+    errorEl.classList.remove('is-visible');
+
+    setButtonLoading(submitBtn, true, 'Updating...');
+    const newPassword = document.getElementById('reset-password').value;
+    const confirmPassword = document.getElementById('reset-confirm').value;
+
+    try {
+      const result = await auth.resetPassword(newPassword, confirmPassword);
+      if (!result.success) {
+        errorEl.textContent = result.message;
+        errorEl.classList.add('is-visible');
+      } else {
+        showToast('✅ Password updated! Please sign in.');
+        showAuthUI('login');
+      }
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
   document.getElementById('login-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearAuthErrors();
@@ -1572,9 +1641,26 @@ function setupEventListeners() {
 
 // === INIT ===
 async function initializeApp() {
+  // ===== CHECK IF USER ARRIVED FROM PASSWORD RESET EMAIL =====
+  const urlParams = new URLSearchParams(window.location.search);
+  const isReset = urlParams.get('reset') === 'true';
+  const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'));
+  const accessToken = hashParams.get('access_token');
+  const type = hashParams.get('type');
+
+  if ((isReset || type === 'recovery') && accessToken) {
+    // ===== SET SESSION FROM RESET LINK =====
+    await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: hashParams.get('refresh_token') || ''
+    });
+    showAuthUI('reset');
+    setupEventListeners();
+    return;
+  }
+
   setupEventListeners();
   setDefaultShiftDate();
-  updateShiftDurations();
 
   await auth.init();
 

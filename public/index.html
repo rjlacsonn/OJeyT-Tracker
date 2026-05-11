@@ -14,6 +14,8 @@
   <link rel="stylesheet" href="css/responsive.css" />
 </head>
 <body>
+
+  <!-- ===== LOGIN PAGE ===== -->
   <section id="page-login" class="page auth-page active" aria-label="Login">
     <div class="auth-card">
       <div class="brand-lockup">
@@ -36,10 +38,12 @@
         <p id="login-error" class="form-error" role="alert" aria-live="polite"></p>
         <button id="login-submit" class="primary-btn" type="submit">Sign In</button>
       </form>
+      <p class="auth-switch">Forgot your password? <a href="#forgot" id="show-forgot">Reset it</a></p>
       <p class="auth-switch">Don't have an account? <a href="#signup" id="show-signup">Sign Up</a></p>
     </div>
   </section>
 
+  <!-- ===== SIGNUP PAGE ===== -->
   <section id="page-signup" class="page auth-page" aria-label="Create Account">
     <div class="auth-card">
       <div class="brand-lockup">
@@ -79,6 +83,57 @@
     </div>
   </section>
 
+  <!-- ===== FORGOT PASSWORD PAGE ===== -->
+  <section id="page-forgot" class="page auth-page" aria-label="Reset Password">
+    <div class="auth-card">
+      <div class="brand-lockup">
+        <span class="brand-mark">O</span>
+        <span class="brand-name">OJeyT Tracker</span>
+      </div>
+      <div class="auth-heading">
+        <h1>Reset password</h1>
+        <p>Enter your email and we'll send you a reset link.</p>
+      </div>
+      <form id="forgot-form" class="auth-form">
+        <label class="field">
+          <span>Email</span>
+          <input id="forgot-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        </label>
+        <p id="forgot-error" class="form-error" role="alert" aria-live="polite"></p>
+        <p id="forgot-success" class="form-success" role="status" aria-live="polite" style="display:none;"></p>
+        <button id="forgot-submit" class="primary-btn" type="submit">Send Reset Link</button>
+      </form>
+      <p class="auth-switch"><a href="#login" id="show-login-from-forgot">← Back to Sign In</a></p>
+    </div>
+  </section>
+
+  <!-- ===== RESET PASSWORD PAGE (after clicking email link) ===== -->
+  <section id="page-reset" class="page auth-page" aria-label="Set New Password">
+    <div class="auth-card">
+      <div class="brand-lockup">
+        <span class="brand-mark">O</span>
+        <span class="brand-name">OJeyT Tracker</span>
+      </div>
+      <div class="auth-heading">
+        <h1>Set new password</h1>
+        <p>Choose a strong password for your account.</p>
+      </div>
+      <form id="reset-form" class="auth-form">
+        <label class="field">
+          <span>New Password</span>
+          <input id="reset-password" type="password" autocomplete="new-password" placeholder="At least 6 characters" required />
+        </label>
+        <label class="field">
+          <span>Confirm New Password</span>
+          <input id="reset-confirm" type="password" autocomplete="new-password" placeholder="Re-enter new password" required />
+        </label>
+        <p id="reset-error" class="form-error" role="alert" aria-live="polite"></p>
+        <button id="reset-submit" class="primary-btn" type="submit">Update Password</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===== TOP NAV ===== -->
   <header id="topbar-container" class="topbar" style="display:none;">
     <div class="topbar-inner">
       <button class="brand-button" type="button" onclick="navTo('dashboard')" aria-label="Go to dashboard">
@@ -110,6 +165,8 @@
   </div>
 
   <main id="main-content-container" class="app-shell" style="display:none;">
+
+    <!-- ===== DASHBOARD ===== -->
     <section id="page-dashboard" class="page app-page" aria-label="Dashboard">
       <div class="page-heading">
         <h1 id="greeting-msg">Hello, User</h1>
@@ -165,6 +222,7 @@
                 <div class="avg-target-status" id="avg-target-status"></div>
               </div>
             </div>
+
             <div class="streak-row">
               <span class="streak-icon">🔥</span>
               <div class="streak-info">
@@ -181,6 +239,7 @@
               <span>Estimated finish:</span>
               <strong id="estimated-finish">Log more sessions to see your estimated finish date.</strong>
             </div>
+
             <!-- ===== CHART TOGGLE ===== -->
             <div class="chart-toggle-row">
               <button class="chart-toggle-btn active" id="btn-weekly-chart" onclick="switchChart('weekly')">This Week</button>
@@ -280,14 +339,13 @@
               <div>Total</div>
               <div>Actions</div>
             </div>
-            <div id="shift-history-body" class="table-body">
-              <!-- Shifts will be populated here -->
-            </div>
+            <div id="shift-history-body" class="table-body"></div>
           </div>
         </article>
       </div>
     </section>
 
+    <!-- ===== HISTORY PAGE ===== -->
     <section id="page-history" class="page app-page" aria-label="Session History">
       <div class="page-heading">
         <div>
@@ -310,6 +368,7 @@
         <article class="panel stat-panel"><span>📈</span><strong id="history-average">0h</strong><small>Daily Avg</small></article>
         <article class="panel stat-panel"><span>⚠️</span><strong id="history-short-days">0</strong><small>Short Days</small></article>
       </div>
+
       <!-- ===== VIEW TOGGLE ===== -->
       <div class="history-view-toggle">
         <button class="chart-toggle-btn active" id="btn-daily-view" onclick="switchHistoryView('daily')">Daily</button>
@@ -322,6 +381,7 @@
       </article>
     </section>
 
+    <!-- ===== SETTINGS PAGE ===== -->
     <section id="page-settings" class="page app-page settings-page" aria-label="Settings">
       <div class="page-heading">
         <h1>Settings</h1>
@@ -331,7 +391,6 @@
         <section class="settings-block">
           <h2><span class="teal-icon">👤</span>Profile</h2>
           <div class="settings-card">
-            <!-- Profile Picture Upload Section -->
             <div class="profile-picture-section">
               <div class="profile-pic-container">
                 <div id="profile-pic-preview" class="profile-pic-preview" title="Click to change profile picture" onclick="document.getElementById('profile-pic-input').click()"></div>
@@ -346,7 +405,6 @@
                 </button>
               </div>
             </div>
-
             <label class="field">
               <span>Your Name</span>
               <input id="settings-name-input" type="text" placeholder="Your name" />
@@ -371,11 +429,12 @@
         <button id="save-settings-btn" class="primary-btn save-btn" type="button" onclick="saveSettings()">▣ Save Changes</button>
       </article>
     </section>
+
   </main>
 
   <div id="toast-container" class="toast-container"></div>
 
-  <!-- DTR Modal -->
+  <!-- ===== DTR MODAL ===== -->
   <div id="dtr-modal" class="modal" style="display:none;">
     <div class="modal-overlay" onclick="closeDTRModal()"></div>
     <div class="modal-content dtr-modal-content">
@@ -431,6 +490,6 @@
   <script src="js/supabase-config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/app.js"></script>
-  
+
 </body>
 </html>

@@ -103,6 +103,48 @@ class Auth {
     }
   }
 
+  // ===== FORGOT PASSWORD =====
+  async forgotPassword(email) {
+    try {
+      if (!email) return { success: false, message: 'Email is required.' };
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname + '?reset=true'
+      });
+
+      if (error) return { success: false, message: error.message };
+
+      return { success: true, message: 'Password reset link sent! Check your email inbox.' };
+    } catch (error) {
+      return { success: false, message: 'Failed to send reset email: ' + error.message };
+    }
+  }
+
+  // ===== RESET PASSWORD (after clicking email link) =====
+  async resetPassword(newPassword, confirmPassword) {
+    try {
+      if (!newPassword || !confirmPassword) {
+        return { success: false, message: 'Both fields are required.' };
+      }
+      if (newPassword !== confirmPassword) {
+        return { success: false, message: 'Passwords do not match.' };
+      }
+      if (newPassword.length < 6) {
+        return { success: false, message: 'Password must be at least 6 characters.' };
+      }
+
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) return { success: false, message: error.message };
+
+      return { success: true, message: 'Password updated successfully!' };
+    } catch (error) {
+      return { success: false, message: 'Failed to update password: ' + error.message };
+    }
+  }
+
   getToken() {
     return this.session?.access_token || null;
   }
@@ -112,7 +154,6 @@ class Auth {
   }
 
   // ===== REFRESH / GET CURRENT USER =====
-
   async refreshUser() {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
@@ -137,8 +178,8 @@ class Auth {
       console.error('Logout error:', error);
     } finally {
       this.user = null;
+      this.session = null;
       this.isAuthenticated = false;
-      // ===== CLEAR ANY OLD LOCALSTORAGE REMNANTS =====
       localStorage.removeItem('authToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
